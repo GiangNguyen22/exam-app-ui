@@ -9,11 +9,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.internalexam.data.SessionManager
+import com.internalexam.data.network.ApiClient
+import com.internalexam.data.network.LoginRequest
 import com.internalexam.model.mock.Role
 import com.internalexam.ui.components.AppBackground
 import com.internalexam.ui.components.GradientHero
 import com.internalexam.ui.components.PrimaryAction
 import com.internalexam.ui.theme.AppRed
+import kotlinx.coroutines.launch
+import retrofit2.HttpException
 
 @Composable
 fun SplashScreen(onContinue: () -> Unit) {
@@ -29,7 +34,7 @@ fun SplashScreen(onContinue: () -> Unit) {
                 Spacer(Modifier.height(28.dp))
                 CircularProgressIndicator()
                 Spacer(Modifier.height(24.dp))
-                PrimaryAction("Tiep tuc", Modifier.width(220.dp), onContinue)
+                PrimaryAction("Continue", Modifier.width(220.dp), onContinue)
             }
         }
     }
@@ -37,24 +42,59 @@ fun SplashScreen(onContinue: () -> Unit) {
 
 @Composable
 fun LoginScreen(onLogin: (Role) -> Unit) {
-    var username by remember { mutableStateOf("SV2026001") }
-    var password by remember { mutableStateOf("password") }
+    var username by remember { mutableStateOf("student1") }
+    var password by remember { mutableStateOf("student123") }
     var error by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    fun loginAs(role: Role) {
+        if (username.isBlank() || password.isBlank()) {
+            error = "Please enter your username and password"
+            return
+        }
+
+        scope.launch {
+            isLoading = true
+            error = null
+            try {
+                val response = ApiClient.login(LoginRequest(username.trim(), password))
+                val token = response.data?.accessToken
+                if (response.success && !token.isNullOrBlank()) {
+                    SessionManager.saveToken(token)
+                    onLogin(role)
+                } else {
+                    error = response.message.ifBlank { "Sign in failed" }
+                }
+            } catch (exception: HttpException) {
+                error = when (exception.code()) {
+                    401, 403 -> "Invalid username or password"
+                    else -> "Backend returned error ${exception.code()}"
+                }
+            } catch (exception: Exception) {
+                error = "Cannot connect to the backend. Check that the server is running."
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
     AppBackground {
         Spacer(Modifier.height(32.dp))
-        GradientHero("Internal Exam", "Dang nhap bang MSSV, ma nhan vien hoac username")
+        GradientHero("Internal Exam", "Sign in with your student ID, employee ID, or username")
         Spacer(Modifier.height(24.dp))
-        OutlinedTextField(username, { username = it }, modifier = Modifier.fillMaxWidth(), label = { Text("MSSV / ma nhan vien / username") }, singleLine = true)
+        OutlinedTextField(username, { username = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Username / student ID / employee ID") }, singleLine = true, enabled = !isLoading)
         Spacer(Modifier.height(12.dp))
-        OutlinedTextField(password, { password = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Mat khau") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
+        OutlinedTextField(password, { password = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), enabled = !isLoading)
         if (error != null) Text(error.orEmpty(), color = AppRed, modifier = Modifier.padding(top = 10.dp))
         Spacer(Modifier.height(18.dp))
-        PrimaryAction("Dang nhap Student") { if (password == "locked") error = "Tai khoan bi khoa" else onLogin(Role.STUDENT) }
+        PrimaryAction(if (isLoading) "Signing in..." else "Sign in as Student") {
+            if (!isLoading) loginAs(Role.STUDENT)
+        }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = { onLogin(Role.TEACHER) }, modifier = Modifier.weight(1f)) { Text("Teacher") }
-            OutlinedButton(onClick = { onLogin(Role.ADMIN) }, modifier = Modifier.weight(1f)) { Text("Admin") }
+            OutlinedButton(onClick = { loginAs(Role.TEACHER) }, modifier = Modifier.weight(1f), enabled = !isLoading) { Text("Teacher") }
+            OutlinedButton(onClick = { loginAs(Role.ADMIN) }, modifier = Modifier.weight(1f), enabled = !isLoading) { Text("Admin") }
         }
-        TextButton(onClick = { error = "Sai mat khau hoac tai khoan khong ton tai" }) { Text("Mo phong loi dang nhap") }
     }
 }

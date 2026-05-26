@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
@@ -15,7 +15,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -28,7 +27,7 @@ fun AppBackground(content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFFF7F9FF), Color(0xFFEFF6FF))))
+            .background(AppBg)
             .padding(horizontal = 18.dp),
         content = content
     )
@@ -40,7 +39,7 @@ fun ExamTopBar(title: String, onBack: (() -> Unit)? = null) {
     TopAppBar(
         title = { Text(title, fontWeight = FontWeight.Bold) },
         navigationIcon = {
-            if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
+            if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
     )
@@ -57,14 +56,12 @@ fun SectionTitle(title: String, subtitle: String? = null) {
 @Composable
 fun GradientHero(title: String, subtitle: String, trailing: @Composable (() -> Unit)? = null) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        colors = CardDefaults.cardColors(containerColor = AppIndigo),
         shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            Modifier
-                .background(Brush.linearGradient(listOf(AppBlue, AppIndigo, AppViolet)))
-                .padding(20.dp),
+            Modifier.padding(20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
@@ -79,7 +76,12 @@ fun GradientHero(title: String, subtitle: String, trailing: @Composable (() -> U
 
 @Composable
 fun MetricCard(title: String, value: String, label: String, color: Color = AppBlue, icon: ImageVector = Icons.Default.CheckCircle) {
-    Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = AppSurface), modifier = Modifier.fillMaxWidth()) {
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = AppSurface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).background(color.copy(alpha = .12f), CircleShape), contentAlignment = Alignment.Center) {
                 Icon(icon, null, tint = color)
@@ -113,7 +115,14 @@ fun StatusPill(state: NetworkState) {
 
 @Composable
 fun PrimaryAction(text: String, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
-    Button(onClick = onClick, modifier = modifier.fillMaxWidth().height(52.dp), shape = MaterialTheme.shapes.medium) { Text(text, fontWeight = FontWeight.Bold) }
+    Button(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().height(52.dp),
+        shape = MaterialTheme.shapes.medium,
+        colors = ButtonDefaults.buttonColors(containerColor = AppIndigo, contentColor = Color.White)
+    ) {
+        Text(text, fontWeight = FontWeight.Bold)
+    }
 }
 
 @Composable
