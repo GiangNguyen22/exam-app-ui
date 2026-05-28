@@ -17,34 +17,52 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ListItem
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.internalexam.data.ExamAttemptStore
 import com.internalexam.data.SessionManager
 import com.internalexam.data.network.ApiClient
@@ -53,58 +71,154 @@ import com.internalexam.data.network.ExamSubmitRequest
 import com.internalexam.model.mock.MockData
 import com.internalexam.model.mock.NetworkState
 import com.internalexam.ui.components.AppBackground
+import com.internalexam.ui.components.AvatarCircle
 import com.internalexam.ui.components.ChipText
 import com.internalexam.ui.components.ExamTopBar
 import com.internalexam.ui.components.GradientHero
+import com.internalexam.ui.components.InfoBanner
 import com.internalexam.ui.components.MetricCard
 import com.internalexam.ui.components.PrimaryAction
+import com.internalexam.ui.components.RuleItem
 import com.internalexam.ui.components.SectionTitle
 import com.internalexam.ui.components.StatusPill
+import com.internalexam.ui.components.StyledProgress
 import com.internalexam.ui.theme.AppAmber
 import com.internalexam.ui.theme.AppBlue
+import com.internalexam.ui.theme.AppCardBorder
+import com.internalexam.ui.theme.AppCoral
+import com.internalexam.ui.theme.AppIndigo
 import com.internalexam.ui.theme.AppMint
 import com.internalexam.ui.theme.AppMuted
 import com.internalexam.ui.theme.AppRed
+import com.internalexam.ui.theme.AppSurface
+import com.internalexam.ui.theme.AppText
+import com.internalexam.ui.theme.BgGradient
+import com.internalexam.ui.theme.HeroGradient
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
+import java.util.Calendar
 
 @Composable
 fun StudentHomeScreen(onLobby: () -> Unit, onResult: () -> Unit) {
-    AppBackground {
-        Spacer(Modifier.height(18.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column {
-                Text("Welcome back", color = AppMuted)
-                Text(MockData.currentStudent.name, style = MaterialTheme.typography.headlineMedium)
+    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+    val greeting = when {
+        hour < 12 -> "Good morning"
+        hour < 17 -> "Good afternoon"
+        else -> "Good evening"
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(BgGradient)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 18.dp)
+    ) {
+        Spacer(Modifier.height(20.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AvatarCircle(MockData.currentStudent.name, 50, AppIndigo)
+                Spacer(Modifier.width(14.dp))
+                Column {
+                    Text(greeting, color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                    Text(MockData.currentStudent.name, style = MaterialTheme.typography.headlineMedium)
+                }
             }
             StatusPill(NetworkState.ONLINE)
         }
-        SectionTitle("Today's Exam Rooms", "Downloaded exams can continue when the network is unavailable.")
+
+        SectionTitle("Today's Exam Rooms", "Downloaded exams can continue offline")
+
         MockData.exams.forEach { exam ->
-            Card(shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(exam.title, style = MaterialTheme.typography.titleLarge)
-                    Text("${exam.subject} - ${exam.duration} min - ${exam.questions} questions", color = AppMuted)
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ChipText("Opens ${exam.opens}")
-                        ChipText(if (exam.downloaded) "Downloaded" else "Not downloaded", if (exam.downloaded) AppMint else AppAmber)
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = AppSurface),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+            ) {
+                Row {
+                    Box(
+                        Modifier
+                            .width(5.dp)
+                            .height(170.dp)
+                            .clip(MaterialTheme.shapes.small)
+                            .background(HeroGradient)
+                    )
+                    Column(
+                        Modifier
+                            .padding(16.dp)
+                            .weight(1f)
+                    ) {
+                        Text(exam.title, style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "${exam.subject} · ${exam.duration} min · ${exam.questions} questions",
+                            color = AppMuted,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ChipText("Opens ${exam.opens}")
+                            ChipText(
+                                if (exam.downloaded) "✓ Downloaded" else "Not downloaded",
+                                if (exam.downloaded) AppMint else AppAmber
+                            )
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        PrimaryAction("Enter Exam Room", onClick = onLobby)
                     }
-                    Spacer(Modifier.height(12.dp))
-                    PrimaryAction("Enter Exam Room", onClick = onLobby)
                 }
             }
             Spacer(Modifier.height(12.dp))
         }
+
         SectionTitle("Recent Results")
         MockData.results.forEach { result ->
-            ListItem(
-                headlineContent = { Text(result.exam) },
-                supportingContent = { Text(result.status) },
-                trailingContent = { Text(if (result.score > 0) result.score.toString() else "--", fontWeight = FontWeight.Bold) }
-            )
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = AppSurface),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+                    .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val scoreColor = when {
+                        result.score >= 8 -> AppMint
+                        result.score >= 5 -> AppAmber
+                        result.score > 0 -> AppRed
+                        else -> AppMuted
+                    }
+                    Box(
+                        Modifier
+                            .size(48.dp)
+                            .background(scoreColor.copy(alpha = 0.12f), CircleShape)
+                            .border(2.dp, scoreColor.copy(alpha = 0.3f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            if (result.score > 0) result.score.toString() else "—",
+                            fontWeight = FontWeight.Bold,
+                            color = scoreColor,
+                            fontSize = 16.sp
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(result.exam, fontWeight = FontWeight.SemiBold)
+                        Text(result.status, color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppMuted)
+                }
+            }
         }
-        TextButton(onClick = onResult) { Text("Open sample result screen") }
+        TextButton(onClick = onResult) { Text("View sample result →") }
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -113,16 +227,56 @@ fun ExamLobbyScreen(onStart: () -> Unit, onBack: () -> Unit) {
     val exam = MockData.exams.first()
     AppBackground {
         ExamTopBar("Exam Room", onBack)
-        GradientHero(exam.title, "${exam.subject} - ${exam.duration} min - ${exam.questions} questions") { StatusPill(NetworkState.SYNCED) }
-        SectionTitle("Schedule", "Opens ${exam.opens} - closes ${exam.closes}")
-        MetricCard("Exam package", if (exam.downloaded) "Downloaded" else "Not ready", "Available offline after download", AppMint)
-        Card(shape = MaterialTheme.shapes.large) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Exam Rules", style = MaterialTheme.typography.titleMedium)
-                Text("Do not leave the app, take screenshots, or sign in from multiple devices.", color = AppMuted)
-                Text("The system records APP_EXIT, SCREENSHOT, LOST_CONNECTION, and FOCUS_LOST events.", color = AppMuted)
+        GradientHero(
+            exam.title,
+            "${exam.subject} · ${exam.duration} min · ${exam.questions} questions"
+        ) { StatusPill(NetworkState.SYNCED) }
+
+        SectionTitle("Schedule")
+        Card(
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = AppSurface),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+        ) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(44.dp)
+                        .background(AppBlue.copy(alpha = 0.1f), MaterialTheme.shapes.medium),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Schedule, null, tint = AppBlue)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("Opens ${exam.opens}", fontWeight = FontWeight.SemiBold)
+                    Text("Closes ${exam.closes}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                }
             }
         }
+
+        Spacer(Modifier.height(8.dp))
+        MetricCard("Exam Package", if (exam.downloaded) "Downloaded ✓" else "Not ready", "Available offline after download", AppMint, Icons.Default.CloudDone)
+
+        SectionTitle("Exam Rules")
+        Card(
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = AppSurface),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                RuleItem("Do not leave the app during the exam", Icons.Default.Warning, AppRed)
+                RuleItem("Screenshots are prohibited", Icons.Default.Security, AppRed)
+                RuleItem("Single device sign-in only", Icons.Default.PhoneAndroid, AppAmber)
+                Spacer(Modifier.height(8.dp))
+                InfoBanner("Events recorded: APP_EXIT, SCREENSHOT, LOST_CONNECTION, FOCUS_LOST", AppAmber, Icons.Default.Info)
+            }
+        }
+
         Spacer(Modifier.weight(1f))
         PrimaryAction("Start Exam", onClick = onStart)
         Spacer(Modifier.height(18.dp))
@@ -133,71 +287,150 @@ fun ExamLobbyScreen(onStart: () -> Unit, onBack: () -> Unit) {
 fun ExamTakingScreen(onSubmit: () -> Unit, onBack: () -> Unit) {
     var index by remember { mutableIntStateOf(0) }
     val question = MockData.questions[index]
+
     AppBackground {
         ExamTopBar("Kotlin Test", onBack)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            ChipText("32:18 left", AppRed)
+
+        // Timer & sync bar
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                color = AppRed.copy(alpha = 0.1f),
+                shape = CircleShape,
+                modifier = Modifier.border(1.dp, AppRed.copy(alpha = 0.2f), CircleShape)
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Timer, null, tint = AppRed, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("32:18", color = AppRed, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+                }
+            }
             StatusPill(NetworkState.SYNCING)
         }
+
         Spacer(Modifier.height(10.dp))
-        Card(shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
+        StyledProgress(0.68f, AppIndigo)
+        Spacer(Modifier.height(14.dp))
+
+        // Question card
+        Card(
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = AppSurface),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+        ) {
+            Column(Modifier.padding(18.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Question ${question.id}/${MockData.questions.size}", color = AppMuted)
-                    Text("Saved at 10:32", color = AppMint)
+                    ChipText("Q${question.id} / ${MockData.questions.size}", AppIndigo)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Save, null, tint = AppMint, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Saved 10:32", color = AppMint, style = MaterialTheme.typography.labelSmall)
+                    }
                 }
-                Spacer(Modifier.height(10.dp))
-                Text(question.content, style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(14.dp))
+                Text(question.content, style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(16.dp))
+
                 question.answers.forEach { answer ->
                     val selected = ExamAttemptStore.selectedAnswerIds(question.id).contains(answer.id)
-                    Row(
-                        Modifier
+                    val borderColor = if (selected) AppIndigo else AppCardBorder
+                    val bgColor = if (selected) AppIndigo.copy(alpha = 0.06f) else Color.Transparent
+
+                    Surface(
+                        onClick = { ExamAttemptStore.selectAnswer(question.id, answer.id, question.type) },
+                        shape = MaterialTheme.shapes.medium,
+                        color = bgColor,
+                        modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 6.dp)
-                            .border(1.dp, if (selected) AppBlue else Color(0xFFE2E8F0), MaterialTheme.shapes.medium)
-                            .clickable { ExamAttemptStore.selectAnswer(question.id, answer.id, question.type) }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(vertical = 4.dp)
+                            .border(1.5.dp, borderColor, MaterialTheme.shapes.medium)
                     ) {
-                        if (question.type.name == "MULTI") {
-                            Checkbox(selected, { ExamAttemptStore.selectAnswer(question.id, answer.id, question.type) })
-                        } else {
-                            RadioButton(selected, { ExamAttemptStore.selectAnswer(question.id, answer.id, question.type) })
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (question.type.name == "MULTI") {
+                                Checkbox(
+                                    selected,
+                                    { ExamAttemptStore.selectAnswer(question.id, answer.id, question.type) },
+                                    colors = CheckboxDefaults.colors(checkedColor = AppIndigo)
+                                )
+                            } else {
+                                RadioButton(
+                                    selected,
+                                    { ExamAttemptStore.selectAnswer(question.id, answer.id, question.type) },
+                                    colors = RadioButtonDefaults.colors(selectedColor = AppIndigo)
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "${answer.id}. ${answer.text}",
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (selected) AppIndigo else AppText
+                            )
                         }
-                        Text("${answer.id}. ${answer.text}", modifier = Modifier.padding(start = 8.dp))
                     }
                 }
             }
         }
-        Surface(color = AppRed.copy(alpha = .1f), shape = MaterialTheme.shapes.medium, modifier = Modifier.padding(top = 12.dp)) {
-            Text("Mock warning: if the network is lost, answers remain stored locally and sync later.", color = AppRed, modifier = Modifier.padding(12.dp))
-        }
+
+        Spacer(Modifier.height(10.dp))
+        InfoBanner("If network is lost, answers are stored locally and sync later.", AppAmber, Icons.Default.WifiOff)
+
         SectionTitle("Quick Navigation")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MockData.questions.forEachIndexed { i, q ->
                 val color = when {
-                    i == index -> AppBlue
+                    i == index -> AppIndigo
                     ExamAttemptStore.isAnswered(q.id) -> AppMint
                     else -> AppMuted
                 }
+                val isCurrent = i == index
                 Box(
                     Modifier
-                        .size(40.dp)
-                        .background(color.copy(alpha = .14f), CircleShape)
-                        .border(1.dp, color, CircleShape)
+                        .size(42.dp)
+                        .background(if (isCurrent) color else color.copy(alpha = .10f), CircleShape)
+                        .then(if (!isCurrent) Modifier.border(1.dp, color.copy(alpha = 0.3f), CircleShape) else Modifier)
                         .clickable { index = i },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(q.id.toString(), color = color, fontWeight = FontWeight.Bold)
+                    Text(q.id.toString(), color = if (isCurrent) Color.White else color, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
             }
         }
-        Spacer(Modifier.height(16.dp))
+
+        Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = { if (index > 0) index-- }, modifier = Modifier.weight(1f)) { Text("Previous") }
-            Button(onClick = { if (index < MockData.questions.lastIndex) index++ }, modifier = Modifier.weight(1f)) { Text("Next") }
+            OutlinedButton(
+                onClick = { if (index > 0) index-- },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Icon(Icons.Default.ArrowBack, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Previous")
+            }
+            Button(
+                onClick = { if (index < MockData.questions.lastIndex) index++ },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp),
+                shape = MaterialTheme.shapes.medium,
+                colors = ButtonDefaults.buttonColors(containerColor = AppIndigo)
+            ) {
+                Text("Next")
+                Spacer(Modifier.width(6.dp))
+                Icon(Icons.Default.ArrowForward, null, modifier = Modifier.size(18.dp))
+            }
         }
+
         Spacer(Modifier.weight(1f))
         PrimaryAction("Submit Exam", onClick = onSubmit)
         Spacer(Modifier.height(18.dp))
@@ -212,19 +445,11 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
 
     fun submit() {
         val authorization = SessionManager.authorizationHeader()
-        if (authorization == null) {
-            message = "Please sign in again."
-            return
-        }
+        if (authorization == null) { message = "Please sign in again."; return }
         scope.launch {
-            loading = true
-            message = null
+            loading = true; message = null
             try {
-                ApiClient.submitExam(
-                    authorization,
-                    ExamAttemptStore.backendExamId,
-                    ExamSubmitRequest("Submitted from Android app with ${ExamAttemptStore.answeredCount} answered questions.")
-                )
+                ApiClient.submitExam(authorization, ExamAttemptStore.backendExamId, ExamSubmitRequest("Submitted from Android app with ${ExamAttemptStore.answeredCount} answered questions."))
                 onConfirm()
             } catch (exception: HttpException) {
                 message = when (exception.code()) {
@@ -234,26 +459,64 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
                 }
             } catch (exception: Exception) {
                 message = "Cannot connect to backend. Showing local result only."
-            } finally {
-                loading = false
-            }
+            } finally { loading = false }
         }
     }
 
     AppBackground {
         ExamTopBar("Confirm Submission", onBack)
-        MetricCard("Answered", ExamAttemptStore.answeredCount.toString(), "Total answered questions", AppMint, Icons.Default.Flag)
-        Spacer(Modifier.height(12.dp))
-        MetricCard("Unanswered", ExamAttemptStore.unansweredCount.toString(), "Review before submitting", AppAmber, Icons.Default.Timer)
-        Spacer(Modifier.height(12.dp))
-        Card(shape = MaterialTheme.shapes.large) {
-            Text("After submission, answers cannot be changed. The system will sync the attempt when internet is available.", modifier = Modifier.padding(16.dp), color = AppMuted)
+
+        Card(shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+            Box(
+                Modifier
+                    .background(HeroGradient)
+                    .fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(22.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("Submission Summary", color = Color.White, style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(ExamAttemptStore.answeredCount.toString(), color = Color.White, style = MaterialTheme.typography.headlineLarge)
+                            Text("Answered", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium)
+                        }
+                        Box(
+                            Modifier
+                                .width(1.dp)
+                                .height(50.dp)
+                                .background(Color.White.copy(alpha = 0.3f))
+                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(ExamAttemptStore.unansweredCount.toString(), color = AppAmber, style = MaterialTheme.typography.headlineLarge)
+                            Text("Unanswered", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+            }
         }
-        if (message != null) Text(message.orEmpty(), color = AppRed, modifier = Modifier.padding(top = 12.dp))
+
+        Spacer(Modifier.height(14.dp))
+        InfoBanner("After submission, answers cannot be changed. The system will sync when internet is available.", AppAmber, Icons.Default.Warning)
+        if (message != null) {
+            Spacer(Modifier.height(10.dp))
+            InfoBanner(message.orEmpty(), AppRed, Icons.Default.ErrorOutline)
+        }
+
         Spacer(Modifier.weight(1f))
         PrimaryAction(if (loading) "Submitting..." else "Submit Exam", onClick = { if (!loading) submit() })
-        OutlinedButton(onClick = onConfirm, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), enabled = !loading) { Text("Show Local Result") }
-        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), enabled = !loading) { Text("Back to Exam") }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = onConfirm, modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp), shape = MaterialTheme.shapes.medium, enabled = !loading) { Text("Show Local Result") }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = onBack, modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp), shape = MaterialTheme.shapes.medium, enabled = !loading) { Text("Back to Exam") }
         Spacer(Modifier.height(18.dp))
     }
 }
@@ -271,30 +534,106 @@ fun ResultScreen(onBack: () -> Unit) {
                 val response = ApiClient.getResult(authorization, ExamAttemptStore.backendExamId)
                 backendResult = response.data
                 backendMessage = if (response.success) "Backend result loaded." else response.message
-            } catch (exception: Exception) {
-                backendMessage = "Local result shown. Backend result is not available."
-            }
+            } catch (exception: Exception) { backendMessage = "Local result shown. Backend not available." }
         }
     }
 
     AppBackground {
         ExamTopBar("Results", onBack)
-        GradientHero("%.1f / 10".format(score.score), "Graded - ${score.correct} correct - ${score.wrong} incorrect - ${score.blank} blank")
+
+        // Score hero
+        Card(shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+            Box(
+                Modifier
+                    .background(HeroGradient)
+                    .fillMaxWidth()
+            ) {
+                Column(
+                    Modifier
+                        .padding(28.dp)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("%.1f".format(score.score), color = Color.White, style = MaterialTheme.typography.displayLarge)
+                    Text("out of 10", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(14.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(score.correct.toString(), color = AppMint, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Text("Correct", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(score.wrong.toString(), color = AppCoral, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Text("Wrong", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(score.blank.toString(), color = AppAmber, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Text("Blank", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+        }
+
         if (backendMessage != null) {
-            Text(backendMessage.orEmpty(), color = if (backendResult != null) AppMint else AppMuted, modifier = Modifier.padding(top = 12.dp))
+            Spacer(Modifier.height(10.dp))
+            InfoBanner(
+                backendMessage.orEmpty(),
+                if (backendResult != null) AppMint else AppMuted,
+                if (backendResult != null) Icons.Default.CloudDone else Icons.Default.Info
+            )
         }
         if (backendResult != null) {
-            Text("Backend status: ${backendResult?.status} - submitted at ${backendResult?.submittedAt ?: "--"}", color = AppMuted)
+            Text("Backend: ${backendResult?.status} · submitted ${backendResult?.submittedAt ?: "--"}", color = AppMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp, start = 4.dp))
         }
+
         SectionTitle("Answer Details")
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
             items(MockData.questions) { question ->
-                Card(shape = MaterialTheme.shapes.large) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Question ${question.id}: ${question.content}", fontWeight = FontWeight.Bold)
-                        Text("Your answer: ${ExamAttemptStore.selectedAnswerIds(question.id).ifEmpty { setOf("--") }.joinToString()}", color = AppMuted)
-                        Text("Correct answer: ${question.answers.filter { it.correct }.joinToString { it.id }}", color = AppMint)
-                        Text(question.explanation, color = AppMuted)
+                val userAnswers = ExamAttemptStore.selectedAnswerIds(question.id)
+                val correctAnswers = question.answers.filter { it.correct }.map { it.id }.toSet()
+                val isCorrect = userAnswers == correctAnswers
+                val isBlank = userAnswers.isEmpty()
+                val statusColor = when {
+                    isBlank -> AppMuted
+                    isCorrect -> AppMint
+                    else -> AppRed
+                }
+
+                Card(
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = AppSurface),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, statusColor.copy(alpha = 0.3f), MaterialTheme.shapes.large)
+                ) {
+                    Row {
+                        Box(
+                            Modifier
+                                .width(4.dp)
+                                .height(110.dp)
+                                .background(statusColor)
+                        )
+                        Column(Modifier.padding(16.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Q${question.id}: ${question.content}", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                ChipText(
+                                    when {
+                                        isBlank -> "Blank"
+                                        isCorrect -> "Correct"
+                                        else -> "Wrong"
+                                    },
+                                    statusColor
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text("Your answer: ${userAnswers.ifEmpty { setOf("—") }.joinToString()}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                            Text("Correct: ${correctAnswers.joinToString()}", color = AppMint, style = MaterialTheme.typography.bodyMedium)
+                            if (question.explanation.isNotBlank()) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(question.explanation, color = AppMuted, style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
                     }
                 }
             }

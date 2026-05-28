@@ -1,5 +1,10 @@
 package com.internalexam.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -11,13 +16,16 @@ import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -82,16 +90,21 @@ fun InternalExamApp() {
             }
         }
     ) { innerPadding ->
-        NavHost(navController = nav, startDestination = Routes.Login, modifier = Modifier.padding(innerPadding)) {
+        NavHost(
+            navController = nav,
+            startDestination = Routes.Login,
+            modifier = Modifier.padding(innerPadding),
+            enterTransition = { fadeIn(tween(300)) + slideInHorizontally(tween(300)) { it / 5 } },
+            exitTransition = { fadeOut(tween(250)) },
+            popEnterTransition = { fadeIn(tween(300)) + slideInHorizontally(tween(300)) { -it / 5 } },
+            popExitTransition = { fadeOut(tween(250)) + slideOutHorizontally(tween(300)) { it / 5 } }
+        ) {
             composable(Routes.Splash) { SplashScreen { nav.navigate(Routes.Login) } }
             composable(Routes.Login) { LoginScreen { role -> nav.navigate(role.startRoute()) { popUpTo(Routes.Login) { inclusive = true } } } }
             composable(Routes.StudentHome) { StudentHomeScreen({ nav.navigate(Routes.Lobby) }, { nav.navigate(Routes.Result) }) }
             composable(Routes.Lobby) {
                 ExamLobbyScreen(
-                    onStart = {
-                        ExamAttemptStore.reset()
-                        nav.navigate(Routes.Taking)
-                    },
+                    onStart = { ExamAttemptStore.reset(); nav.navigate(Routes.Taking) },
                     onBack = { nav.popBackStack() }
                 )
             }
@@ -141,7 +154,11 @@ private fun RoleBottomBar(nav: NavHostController, current: String, onLogout: () 
         )
     }
 
-    NavigationBar(containerColor = AppSurface) {
+    NavigationBar(
+        containerColor = AppSurface,
+        tonalElevation = 0.dp,
+        modifier = Modifier.shadow(8.dp, spotColor = Color.Black.copy(alpha = 0.08f))
+    ) {
         items.forEach { item ->
             NavigationBarItem(
                 selected = current == item.route,
