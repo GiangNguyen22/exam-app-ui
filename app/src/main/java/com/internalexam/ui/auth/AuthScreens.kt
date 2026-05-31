@@ -174,10 +174,9 @@ fun LoginScreen(onLogin: (Role) -> Unit) {
     var showPassword by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
-    var selectedRole by remember { mutableStateOf(Role.STUDENT) }
     val scope = rememberCoroutineScope()
 
-    fun loginAs(role: Role) {
+    fun login() {
         if (username.isBlank() || password.isBlank()) {
             error = "Please enter your username and password"
             return
@@ -188,9 +187,12 @@ fun LoginScreen(onLogin: (Role) -> Unit) {
             try {
                 val response = ApiClient.login(LoginRequest(username.trim(), password))
                 val token = response.data?.accessToken
-                if (response.success && !token.isNullOrBlank()) {
+                val role = response.data?.roles.toAppRole()
+                if (response.success && !token.isNullOrBlank() && role != null) {
                     SessionManager.saveToken(token)
                     onLogin(role)
+                } else if (response.success && !token.isNullOrBlank()) {
+                    error = "Your account has no app role assigned"
                 } else {
                     error = response.message.ifBlank { "Sign in failed" }
                 }
@@ -296,46 +298,11 @@ fun LoginScreen(onLogin: (Role) -> Unit) {
                         Text(error.orEmpty(), color = AppRed, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-
-                Spacer(Modifier.height(16.dp))
-                Text("Sign in as", color = AppMuted, style = MaterialTheme.typography.labelMedium)
-                Spacer(Modifier.height(8.dp))
-
-                // Role selector
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Role.entries.forEach { role ->
-                        val isSelected = selectedRole == role
-                        Surface(
-                            onClick = { selectedRole = role },
-                            shape = MaterialTheme.shapes.medium,
-                            color = if (isSelected) AppIndigo.copy(alpha = 0.1f) else Color.Transparent,
-                            modifier = Modifier
-                                .weight(1f)
-                                .border(
-                                    1.dp,
-                                    if (isSelected) AppIndigo else AppCardBorder,
-                                    MaterialTheme.shapes.medium
-                                )
-                        ) {
-                            Text(
-                                role.name.lowercase().replaceFirstChar { it.uppercase() },
-                                textAlign = TextAlign.Center,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) AppIndigo else AppMuted,
-                                modifier = Modifier.padding(vertical = 12.dp)
-                            )
-                        }
-                    }
-                }
-
                 Spacer(Modifier.height(20.dp))
 
                 // Sign in button
                 Button(
-                    onClick = { if (!isLoading) loginAs(selectedRole) },
+                    onClick = { if (!isLoading) login() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp),
@@ -366,5 +333,18 @@ fun LoginScreen(onLogin: (Role) -> Unit) {
                 }
             }
         }
+    }
+}
+
+private fun List<String>?.toAppRole(): Role? {
+    val normalized = this.orEmpty().map { role ->
+        role.removePrefix("ROLE_").uppercase()
+    }.toSet()
+
+    return when {
+        "ADMIN" in normalized -> Role.ADMIN
+        "TEACHER" in normalized -> Role.TEACHER
+        "STUDENT" in normalized -> Role.STUDENT
+        else -> null
     }
 }

@@ -11,7 +11,7 @@ object ApiClient {
         "http://127.0.0.1:8080/",
         "http://10.0.2.2:8080/",
         "http://10.0.3.2:8080/",
-        "http://192.168.0.103:8080/"
+        "http://192.168.0.104:8080/"
     )
 
     private val httpClient = OkHttpClient.Builder()
@@ -32,6 +32,22 @@ object ApiClient {
         return callBackend { it.createExam(authorization, request) }
     }
 
+    suspend fun getExams(authorization: String): ApiResponse<List<ExamResponse>> {
+        return callBackend { it.getExams(authorization) }
+    }
+
+    suspend fun getQuestions(authorization: String): ApiResponse<List<QuestionResponse>> {
+        return callBackend { it.getQuestions(authorization) }
+    }
+
+    suspend fun getSubjects(authorization: String): ApiResponse<List<SubjectResponse>> {
+        return callBackend { it.getSubjects(authorization) }
+    }
+
+    suspend fun getTopics(authorization: String, subjectId: Long): ApiResponse<List<TopicResponse>> {
+        return callBackend { it.getTopics(authorization, subjectId) }
+    }
+
     suspend fun generateExam(authorization: String, request: ExamGenerateRequest): ApiResponse<ExamResponse> {
         return callBackend { it.generateExam(authorization, request) }
     }
@@ -42,6 +58,18 @@ object ApiClient {
 
     suspend fun getResult(authorization: String, examId: Long): ApiResponse<ExamResultResponse> {
         return callBackend { it.getResult(authorization, examId) }
+    }
+
+    suspend fun getExamQuestions(authorization: String, examId: Long): ApiResponse<List<ExamQuestionResponse>> {
+        return callBackend { it.getExamQuestions(authorization, examId) }
+    }
+
+    suspend fun createQuestionForExam(
+        authorization: String,
+        examId: Long,
+        request: ExamQuestionCreateRequest
+    ): ApiResponse<ExamQuestionResponse> {
+        return callBackend { it.createQuestionForExam(authorization, examId, request) }
     }
 
     private suspend fun <T> callBackend(block: suspend (AuthApi) -> T): T {

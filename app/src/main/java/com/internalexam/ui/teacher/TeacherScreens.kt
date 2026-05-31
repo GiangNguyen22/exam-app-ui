@@ -41,6 +41,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -52,6 +54,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,10 +67,16 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.internalexam.data.SessionManager
+import com.internalexam.data.ExamAttemptStore
 import com.internalexam.data.network.ApiClient
+import com.internalexam.data.network.AnswerCreateRequest
 import com.internalexam.data.network.ExamCreateRequest
 import com.internalexam.data.network.ExamGenerateRequest
-import com.internalexam.data.network.QuestionCreateRequest
+import com.internalexam.data.network.ExamQuestionCreateRequest
+import com.internalexam.data.network.ExamResponse
+import com.internalexam.data.network.QuestionResponse
+import com.internalexam.data.network.SubjectResponse
+import com.internalexam.data.network.TopicResponse
 import com.internalexam.model.mock.CandidateStatus
 import com.internalexam.model.mock.Difficulty
 import com.internalexam.model.mock.MockData
@@ -100,6 +109,66 @@ import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
 @Composable
+fun TeacherExamListScreen(
+    onCreateExam: () -> Unit,
+    onAddQuestion: (ExamResponse) -> Unit,
+    onBack: () -> Unit
+) {
+    var exams by remember { mutableStateOf<List<ExamResponse>>(emptyList()) }
+    var message by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Please sign in again."
+            return@LaunchedEffect
+        }
+        try {
+            val response = ApiClient.getExams(authorization)
+            exams = response.data.orEmpty()
+            message = if (exams.isEmpty()) "No exams found. Create an exam first." else null
+        } catch (exception: Exception) {
+            message = "Cannot load exams from backend."
+        }
+    }
+
+    AppBackground {
+        ExamTopBar("Exams", onBack)
+        SectionTitle("Exam List", "Choose an exam to add questions")
+        if (message != null) {
+            InfoBanner(message.orEmpty(), AppAmber, Icons.Default.Info)
+            Spacer(Modifier.height(12.dp))
+        }
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 110.dp)) {
+            items(exams) { exam ->
+                Card(
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = AppSurface),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(exam.title, style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Code ${exam.code} - ID ${exam.id}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(onClick = { onAddQuestion(exam) }, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Default.QuestionAnswer, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Add Question")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        PrimaryAction("Create Exam", onClick = onCreateExam)
+    }
+}
+
+@Composable
 fun TeacherDashboardScreen(
     openQuestions: () -> Unit,
     openCreateExam: () -> Unit,
@@ -107,6 +176,24 @@ fun TeacherDashboardScreen(
     openMonitor: () -> Unit,
     openReports: () -> Unit
 ) {
+    var examCount by remember { mutableStateOf<Int?>(null) }
+    var questionCount by remember { mutableStateOf<Int?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Please sign in again."
+            return@LaunchedEffect
+        }
+        try {
+            examCount = ApiClient.getExams(authorization).data.orEmpty().size
+            questionCount = ApiClient.getQuestions(authorization).data.orEmpty().size
+        } catch (exception: Exception) {
+            message = "Cannot load dashboard data from backend."
+        }
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -120,14 +207,18 @@ fun TeacherDashboardScreen(
         }
 
         SectionTitle("Overview")
+        if (message != null) {
+            InfoBanner(message.orEmpty(), AppAmber, Icons.Default.Info)
+            Spacer(Modifier.height(10.dp))
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCard("Exams", "12", "3 active", AppBlue, Icons.Default.Assessment)
-                MetricCard("Alerts", "4", "Realtime", AppRed, Icons.Default.Warning)
+                MetricCard("Exams", examCount?.toString() ?: "--", "From database", AppBlue, Icons.Default.Assessment)
+                MetricCard("Alerts", "--", "No backend API", AppMuted, Icons.Default.Warning)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCard("Questions", "428", "Classified", AppViolet, Icons.Default.QuestionAnswer)
-                MetricCard("Sync", "Synced", "10:35", AppMint, Icons.Default.CloudDone)
+                MetricCard("Questions", questionCount?.toString() ?: "--", "From database", AppViolet, Icons.Default.QuestionAnswer)
+                MetricCard("Sync", "Live", "Backend API", AppMint, Icons.Default.CloudDone)
             }
         }
 
@@ -176,6 +267,24 @@ fun TeacherDashboardScreen(
 
 @Composable
 fun QuestionBankScreen(onCreate: () -> Unit, onBack: () -> Unit) {
+    var questions by remember { mutableStateOf<List<QuestionResponse>>(emptyList()) }
+    var message by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Please sign in again."
+            return@LaunchedEffect
+        }
+        try {
+            val response = ApiClient.getQuestions(authorization)
+            questions = response.data.orEmpty()
+            message = if (questions.isEmpty()) "No questions found in the database." else null
+        } catch (exception: Exception) {
+            message = "Cannot load questions from the backend."
+        }
+    }
+
     AppBackground {
         ExamTopBar("Question Bank", onBack)
 
@@ -192,20 +301,13 @@ fun QuestionBankScreen(onCreate: () -> Unit, onBack: () -> Unit) {
             )
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 12.dp)) {
-            ChipText("Android", AppIndigo)
-            ChipText("Compose", AppBlue)
-            ChipText("Medium", AppAmber)
-            ChipText("Single", AppMuted)
+        if (message != null) {
+            InfoBanner(message.orEmpty(), AppAmber, Icons.Default.Info)
+            Spacer(Modifier.height(12.dp))
         }
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 90.dp)) {
-            items(MockData.questions) { question ->
-                val diffColor = when (question.difficulty) {
-                    Difficulty.EASY -> AppMint
-                    Difficulty.MEDIUM -> AppAmber
-                    Difficulty.HARD -> AppRed
-                }
+            items(questions) { question ->
                 Card(
                     shape = MaterialTheme.shapes.large,
                     colors = CardDefaults.cardColors(containerColor = AppSurface),
@@ -216,13 +318,7 @@ fun QuestionBankScreen(onCreate: () -> Unit, onBack: () -> Unit) {
                     Column(Modifier.padding(16.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(question.content, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            ChipText(question.difficulty.name, diffColor)
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            ChipText(question.subject)
-                            ChipText(question.topic)
-                            ChipText(question.type.name, AppViolet)
+                            ChipText("ID ${question.id}", AppIndigo)
                         }
                     }
                 }
@@ -260,24 +356,111 @@ fun QuestionBankScreen(onCreate: () -> Unit, onBack: () -> Unit) {
 @Composable
 fun CreateQuestionScreen(onBack: () -> Unit) {
     var type by remember { mutableStateOf(QuestionType.SINGLE) }
+    var difficulty by remember { mutableStateOf(Difficulty.MEDIUM) }
     var content by remember { mutableStateOf("") }
-    var subject by remember { mutableStateOf("Android") }
-    var topic by remember { mutableStateOf("Jetpack Compose") }
+    var subjects by remember { mutableStateOf<List<SubjectResponse>>(emptyList()) }
+    var topics by remember { mutableStateOf<List<TopicResponse>>(emptyList()) }
+    var selectedSubject by remember { mutableStateOf<SubjectResponse?>(null) }
+    var selectedTopic by remember { mutableStateOf<TopicResponse?>(null) }
+    var answerA by remember { mutableStateOf("") }
+    var answerB by remember { mutableStateOf("") }
+    var answerC by remember { mutableStateOf("") }
+    var answerD by remember { mutableStateOf("") }
     var correctAnswer by remember { mutableStateOf("A") }
     var explanation by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
+    var catalogLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Please sign in again."
+            return@LaunchedEffect
+        }
+
+        catalogLoading = true
+        try {
+            val response = ApiClient.getSubjects(authorization)
+            if (response.success) {
+                subjects = response.data.orEmpty()
+                selectedSubject = response.data.orEmpty().firstOrNull()
+            } else {
+                message = response.message
+            }
+        } catch (exception: Exception) {
+            message = "Cannot load subjects from backend."
+        } finally {
+            catalogLoading = false
+        }
+    }
+
+    LaunchedEffect(selectedSubject?.id) {
+        val authorization = SessionManager.authorizationHeader() ?: return@LaunchedEffect
+        val subject = selectedSubject ?: run {
+            topics = emptyList()
+            selectedTopic = null
+            return@LaunchedEffect
+        }
+
+        try {
+            val response = ApiClient.getTopics(authorization, subject.id)
+            if (response.success) {
+                topics = response.data.orEmpty()
+                selectedTopic = response.data.orEmpty().firstOrNull()
+            } else {
+                topics = emptyList()
+                selectedTopic = null
+                message = response.message
+            }
+        } catch (exception: Exception) {
+            topics = emptyList()
+            selectedTopic = null
+            message = "Cannot load topics from backend."
+        }
+    }
 
     fun saveQuestion() {
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) { message = "Please sign in again."; return }
+        val selectedExam = ExamAttemptStore.selectedExam.value
+        if (selectedExam == null) { message = "Select an exam before creating questions."; return }
         if (content.isBlank()) { message = "Question content is required."; return }
+        val subject = selectedSubject
+        if (subject == null) { message = "Select a subject before saving."; return }
+        val answerContents = listOf(answerA, answerB, answerC, answerD)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        if (answerContents.size < 2) { message = "At least two answer options are required."; return }
+        val correct = correctAnswer.trim().uppercase()
+        val validCorrectLabels = answerContents.indices.map { ('A' + it).toString() }
+        if (correct !in validCorrectLabels) { message = "Correct answer must be one of ${validCorrectLabels.joinToString()}."; return }
         scope.launch {
             loading = true; message = null
             try {
-                val response = ApiClient.createQuestion(authorization, QuestionCreateRequest(subjectId = 1, topicId = 1, content = content.trim(), type = type.name, difficulty = Difficulty.MEDIUM.name))
-                message = if (response.success) "Question saved: #${response.data?.id}" else response.message
+                val response = ApiClient.createQuestionForExam(
+                    authorization,
+                    selectedExam.id,
+                    ExamQuestionCreateRequest(
+                        subjectId = subject.id,
+                        topicId = selectedTopic?.id,
+                        content = content.trim(),
+                        type = type.name,
+                        difficulty = difficulty.name,
+                        orderIndex = null,
+                        score = null,
+                        answers = answerContents.mapIndexed { index, answer ->
+                            val label = ('A' + index).toString()
+                            AnswerCreateRequest(
+                                content = answer.trim(),
+                                correct = label == correct,
+                                explanation = if (label == correct) explanation.ifBlank { null } else null
+                            )
+                        }
+                    )
+                )
+                message = if (response.success) "Question added to ${selectedExam.title}" else response.message
             } catch (exception: HttpException) { message = "Backend error ${exception.code()}. Check teacher permissions." }
             catch (exception: Exception) { message = "Cannot connect to backend." }
             finally { loading = false }
@@ -288,15 +471,41 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
         ExamTopBar("Create Question", onBack)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
             item {
+                val selectedExam = ExamAttemptStore.selectedExam.value
+                InfoBanner(
+                    selectedExam?.let { "Adding question to exam: ${it.title}" } ?: "No exam selected. Open an exam before adding questions.",
+                    if (selectedExam != null) AppMint else AppAmber,
+                    Icons.Default.Info
+                )
+
                 SectionTitle("Question Content")
                 OutlinedTextField(content, { content = it }, modifier = Modifier
                     .fillMaxWidth()
                     .height(120.dp), label = { Text("Enter the question text") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
 
                 SectionTitle("Classification")
-                OutlinedTextField(subject, { subject = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Subject") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                CatalogDropdown(
+                    label = "Subject",
+                    value = selectedSubject?.name ?: if (catalogLoading) "Loading subjects..." else "Select subject",
+                    enabled = !loading && !catalogLoading && subjects.isNotEmpty(),
+                    items = subjects,
+                    itemText = { "${it.name} (#${it.id})" },
+                    onSelect = {
+                        selectedSubject = it
+                        selectedTopic = null
+                    }
+                )
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(topic, { topic = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Topic") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                CatalogDropdown(
+                    label = "Topic (optional)",
+                    value = selectedTopic?.name ?: if (topics.isEmpty()) "No topic" else "No topic selected",
+                    enabled = !loading && topics.isNotEmpty(),
+                    items = topics,
+                    itemText = { "${it.name} (#${it.id})" },
+                    onSelect = { selectedTopic = it },
+                    leadingClearItem = "No topic",
+                    onClear = { selectedTopic = null }
+                )
 
                 Spacer(Modifier.height(8.dp))
                 Text("Difficulty", color = AppMuted, style = MaterialTheme.typography.labelMedium)
@@ -304,7 +513,24 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Difficulty.entries.forEach { d ->
                         val c = when (d) { Difficulty.EASY -> AppMint; Difficulty.MEDIUM -> AppAmber; Difficulty.HARD -> AppRed }
-                        ChipText(d.name, c)
+                        FilterChip(
+                            selected = difficulty == d,
+                            onClick = { difficulty = d },
+                            label = { Text(d.name) },
+                            shape = MaterialTheme.shapes.small,
+                            colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = c.copy(alpha = 0.18f),
+                                selectedLabelColor = c,
+                                containerColor = AppSurface,
+                                labelColor = AppText
+                            ),
+                            border = androidx.compose.material3.FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = difficulty == d,
+                                borderColor = AppCardBorder,
+                                selectedBorderColor = c
+                            )
+                        )
                     }
                 }
 
@@ -316,8 +542,15 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
                 }
 
                 SectionTitle("Answer Options")
-                repeat(4) { i -> OutlinedTextField("", {}, modifier = Modifier.fillMaxWidth(), label = { Text("Answer ${'A' + i}") }, shape = MaterialTheme.shapes.medium); Spacer(Modifier.height(6.dp)) }
-                OutlinedTextField(correctAnswer, { correctAnswer = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Correct answer (e.g., A)") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                OutlinedTextField(answerA, { answerA = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Answer A") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(answerB, { answerB = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Answer B") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(answerC, { answerC = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Answer C") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(answerD, { answerD = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Answer D") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(correctAnswer, { correctAnswer = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Correct answer (A, B, C, or D)") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
 
                 SectionTitle("Explanation")
                 OutlinedTextField(explanation, { explanation = it }, modifier = Modifier
@@ -326,10 +559,65 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
 
                 if (message != null) {
                     Spacer(Modifier.height(8.dp))
-                    InfoBanner(message.orEmpty(), if (message.orEmpty().startsWith("Question saved")) AppMint else AppRed, if (message.orEmpty().startsWith("Question saved")) Icons.Default.CheckCircle else Icons.Default.ErrorOutline)
+                    InfoBanner(message.orEmpty(), if (message.orEmpty().startsWith("Question added")) AppMint else AppRed, if (message.orEmpty().startsWith("Question added")) Icons.Default.CheckCircle else Icons.Default.ErrorOutline)
                 }
                 Spacer(Modifier.height(14.dp))
                 PrimaryAction(if (loading) "Saving..." else "Save Question") { if (!loading) saveQuestion() }
+            }
+        }
+    }
+}
+
+@Composable
+private fun <T> CatalogDropdown(
+    label: String,
+    value: String,
+    enabled: Boolean,
+    items: List<T>,
+    itemText: (T) -> String,
+    onSelect: (T) -> Unit,
+    leadingClearItem: String? = null,
+    onClear: (() -> Unit)? = null
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(Modifier.fillMaxWidth()) {
+        Text(label, color = AppMuted, style = MaterialTheme.typography.labelMedium)
+        Spacer(Modifier.height(6.dp))
+        Box(Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { expanded = true },
+                enabled = enabled,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+            ) {
+                Text(value, modifier = Modifier.weight(1f))
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (leadingClearItem != null && onClear != null) {
+                    DropdownMenuItem(
+                        text = { Text(leadingClearItem) },
+                        onClick = {
+                            onClear()
+                            expanded = false
+                        }
+                    )
+                }
+                items.forEach { item ->
+                    DropdownMenuItem(
+                        text = { Text(itemText(item)) },
+                        onClick = {
+                            onSelect(item)
+                            expanded = false
+                        }
+                    )
+                }
             }
         }
     }
@@ -524,6 +812,18 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
 fun LiveMonitoringScreen(onBack: () -> Unit) {
     AppBackground {
         ExamTopBar("Live Monitoring", onBack)
+        SectionTitle("Active Candidates")
+        InfoBanner("Live monitoring data is not available because the backend does not expose a monitoring API yet.", AppAmber, Icons.Default.Info)
+        Spacer(Modifier.height(12.dp))
+        SectionTitle("Realtime Log")
+        InfoBanner("Audit log data is not available in the mobile API yet.", AppAmber, Icons.Default.Info)
+    }
+}
+
+@Composable
+private fun LiveMonitoringScreenLegacy(onBack: () -> Unit) {
+    AppBackground {
+        ExamTopBar("Live Monitoring", onBack)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
             item { SectionTitle("Active Candidates") }
             items(MockData.candidates) { candidate ->
@@ -595,6 +895,16 @@ fun LiveMonitoringScreen(onBack: () -> Unit) {
 
 @Composable
 fun ReportDashboardScreen(onBack: () -> Unit) {
+    AppBackground {
+        ExamTopBar("Reports", onBack)
+        GradientHero("Reports", "Backend report data is not available yet")
+        SectionTitle("Score Distribution")
+        InfoBanner("Reports are hidden until the backend exposes report APIs.", AppAmber, Icons.Default.Info)
+    }
+}
+
+@Composable
+private fun ReportDashboardScreenLegacy(onBack: () -> Unit) {
     AppBackground {
         ExamTopBar("Reports", onBack)
         GradientHero("Average Score 7.6", "Performance overview across all exams")

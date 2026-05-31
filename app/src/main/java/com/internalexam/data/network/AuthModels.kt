@@ -14,7 +14,8 @@ data class ApiResponse<T>(
 
 data class LoginResponse(
     val accessToken: String,
-    val tokenType: String
+    val tokenType: String,
+    val roles: List<String>?
 )
 
 data class QuestionCreateRequest(
@@ -28,6 +29,19 @@ data class QuestionCreateRequest(
 data class QuestionResponse(
     val id: Long,
     val content: String
+)
+
+data class SubjectResponse(
+    val id: Long,
+    val name: String,
+    val description: String?
+)
+
+data class TopicResponse(
+    val id: Long,
+    val subjectId: Long,
+    val name: String,
+    val description: String?
 )
 
 data class ExamCreateRequest(
@@ -62,4 +76,37 @@ data class ExamResultResponse(
     val score: String?,
     val status: String,
     val submittedAt: String?
+)
+
+data class ExamQuestionResponse(
+    val examQuestionId: Long,
+    val questionId: Long,
+    val orderIndex: Int?,
+    val score: String?,
+    val content: String,
+    val type: String?,
+    val difficulty: String?,
+    val answers: List<AnswerOptionResponse>?
+)
+
+data class AnswerOptionResponse(
+    val id: Long,
+    val content: String
+)
+
+data class ExamQuestionCreateRequest(
+    val subjectId: Long,
+    val topicId: Long?,
+    val content: String,
+    val type: String,
+    val difficulty: String,
+    val orderIndex: Int?,
+    val score: String?,
+    val answers: List<AnswerCreateRequest>
+)
+
+data class AnswerCreateRequest(
+    val content: String,
+    val correct: Boolean,
+    val explanation: String?
 )

@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import com.internalexam.data.ExamAttemptStore
 import com.internalexam.data.SessionManager
 import com.internalexam.data.network.ApiClient
+import com.internalexam.data.network.ExamResponse
 import com.internalexam.data.network.ExamResultResponse
 import com.internalexam.data.network.ExamSubmitRequest
 import com.internalexam.model.mock.MockData
@@ -99,12 +100,128 @@ import retrofit2.HttpException
 import java.util.Calendar
 
 @Composable
-fun StudentHomeScreen(onLobby: () -> Unit, onResult: () -> Unit) {
+fun StudentHomeScreen(onLobby: (ExamResponse) -> Unit, onResult: () -> Unit) {
+    var exams by remember { mutableStateOf<List<ExamResponse>>(emptyList()) }
+    var loadMessage by remember { mutableStateOf<String?>(null) }
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val greeting = when {
         hour < 12 -> "Good morning"
         hour < 17 -> "Good afternoon"
         else -> "Good evening"
+    }
+
+    LaunchedEffect(Unit) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            loadMessage = "Please sign in again."
+            return@LaunchedEffect
+        }
+        try {
+            val response = ApiClient.getExams(authorization)
+            exams = response.data.orEmpty()
+            loadMessage = if (exams.isEmpty()) "No exams found in the database." else null
+        } catch (exception: Exception) {
+            loadMessage = "Cannot load exams from the backend."
+        }
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(BgGradient)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 18.dp)
+    ) {
+        Spacer(Modifier.height(20.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AvatarCircle("Student", 50, AppIndigo)
+                Spacer(Modifier.width(14.dp))
+                Column {
+                    Text(greeting, color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                    Text("Student Dashboard", style = MaterialTheme.typography.headlineMedium)
+                }
+            }
+            StatusPill(NetworkState.ONLINE)
+        }
+
+        SectionTitle("Exam Rooms", "Loaded from the backend database")
+        if (loadMessage != null) {
+            InfoBanner(loadMessage.orEmpty(), AppAmber, Icons.Default.Info)
+            Spacer(Modifier.height(12.dp))
+        }
+
+        exams.forEach { exam ->
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = AppSurface),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+                    .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+            ) {
+                Row {
+                    Box(
+                        Modifier
+                            .width(5.dp)
+                            .height(150.dp)
+                            .clip(MaterialTheme.shapes.small)
+                            .background(AppIndigo)
+                    )
+                    Column(
+                        Modifier
+                            .padding(16.dp)
+                            .weight(1f)
+                    ) {
+                        Text(exam.title, style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Code ${exam.code}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ChipText("From database", AppMint)
+                            ChipText("ID ${exam.id}", AppIndigo)
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        PrimaryAction("Enter Exam Room") { onLobby(exam) }
+                    }
+                }
+            }
+        }
+
+        SectionTitle("Results")
+        TextButton(onClick = onResult, enabled = exams.isNotEmpty()) { Text("View selected exam result") }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun StudentHomeScreenLegacy(onLobby: () -> Unit, onResult: () -> Unit) {
+    var exams by remember { mutableStateOf<List<ExamResponse>>(emptyList()) }
+    var loadMessage by remember { mutableStateOf<String?>(null) }
+    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+    val greeting = when {
+        hour < 12 -> "Good morning"
+        hour < 17 -> "Good afternoon"
+        else -> "Good evening"
+    }
+
+    LaunchedEffect(Unit) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            loadMessage = "Please sign in again."
+            return@LaunchedEffect
+        }
+        try {
+            val response = ApiClient.getExams(authorization)
+            exams = response.data.orEmpty()
+            loadMessage = if (exams.isEmpty()) "No exams found in the database." else null
+        } catch (exception: Exception) {
+            loadMessage = "Cannot load exams from the backend."
+        }
     }
 
     Column(
@@ -224,6 +341,46 @@ fun StudentHomeScreen(onLobby: () -> Unit, onResult: () -> Unit) {
 
 @Composable
 fun ExamLobbyScreen(onStart: () -> Unit, onBack: () -> Unit) {
+    val exam = ExamAttemptStore.selectedExam.value
+    AppBackground {
+        ExamTopBar("Exam Room", onBack)
+        GradientHero(
+            exam?.title ?: "No exam selected",
+            exam?.let { "Code ${it.code} - ID ${it.id}" } ?: "Go back and select an exam from the database."
+        ) { StatusPill(NetworkState.SYNCED) }
+
+        SectionTitle("Source")
+        MetricCard(
+            "Exam package",
+            if (exam != null) "Ready" else "Not ready",
+            "Loaded from backend database",
+            AppMint,
+            Icons.Default.CloudDone
+        )
+
+        Spacer(Modifier.height(12.dp))
+        Card(
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = AppSurface),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                RuleItem("Questions will be available when you start the exam", Icons.Default.Info, AppIndigo)
+                RuleItem("Do not leave the app during the exam", Icons.Default.Warning, AppRed)
+                RuleItem("Single device sign-in only", Icons.Default.PhoneAndroid, AppAmber)
+            }
+        }
+
+        Spacer(Modifier.weight(1f))
+        PrimaryAction("Start Exam", onClick = onStart)
+        Spacer(Modifier.height(18.dp))
+    }
+}
+
+@Composable
+private fun ExamLobbyScreenLegacy(onStart: () -> Unit, onBack: () -> Unit) {
     val exam = MockData.exams.first()
     AppBackground {
         ExamTopBar("Exam Room", onBack)
@@ -286,7 +443,29 @@ fun ExamLobbyScreen(onStart: () -> Unit, onBack: () -> Unit) {
 @Composable
 fun ExamTakingScreen(onSubmit: () -> Unit, onBack: () -> Unit) {
     var index by remember { mutableIntStateOf(0) }
-    val question = MockData.questions[index]
+    var loadMessage by remember { mutableStateOf<String?>(null) }
+    val backendQuestions = ExamAttemptStore.backendQuestions.value
+    val useBackendQuestions = true
+    val totalQuestions = backendQuestions.size
+    val safeIndex = index.coerceIn(0, (totalQuestions - 1).coerceAtLeast(0))
+
+    LaunchedEffect(ExamAttemptStore.backendExamId) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization != null) {
+            try {
+                val response = ApiClient.getExamQuestions(authorization, ExamAttemptStore.backendExamId)
+                val questions = response.data.orEmpty()
+                if (response.success && questions.isNotEmpty()) {
+                    ExamAttemptStore.setBackendQuestions(questions)
+                    loadMessage = "Loaded ${questions.size} questions from backend."
+                } else {
+                    loadMessage = "No backend questions found. Showing local sample questions."
+                }
+            } catch (exception: Exception) {
+                loadMessage = "Cannot load backend questions. Showing local sample questions."
+            }
+        }
+    }
 
     AppBackground {
         ExamTopBar("Kotlin Test", onBack)
@@ -317,97 +496,184 @@ fun ExamTakingScreen(onSubmit: () -> Unit, onBack: () -> Unit) {
         Spacer(Modifier.height(10.dp))
         StyledProgress(0.68f, AppIndigo)
         Spacer(Modifier.height(14.dp))
+        if (loadMessage != null) {
+            Text(loadMessage.orEmpty(), color = if (useBackendQuestions) AppMint else AppMuted, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(8.dp))
+        }
 
-        // Question card
-        Card(
-            shape = MaterialTheme.shapes.large,
-            colors = CardDefaults.cardColors(containerColor = AppSurface),
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
         ) {
-            Column(Modifier.padding(18.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    ChipText("Q${question.id} / ${MockData.questions.size}", AppIndigo)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Save, null, tint = AppMint, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Saved 10:32", color = AppMint, style = MaterialTheme.typography.labelSmall)
+            if (totalQuestions == 0) {
+                InfoBanner("No questions were returned from the database for this exam.", AppAmber, Icons.Default.Info)
+            } else {
+            // Question card
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = AppSurface),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+            ) {
+                Column(Modifier.padding(18.dp)) {
+                if (useBackendQuestions) {
+                    val question = backendQuestions[safeIndex]
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        ChipText("Q${safeIndex + 1} / ${backendQuestions.size}", AppIndigo)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Save, null, tint = AppMint, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Saved 10:32", color = AppMint, style = MaterialTheme.typography.labelSmall)
+                        }
                     }
-                }
-                Spacer(Modifier.height(14.dp))
-                Text(question.content, style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(14.dp))
+                    Text(question.content, style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(16.dp))
 
-                question.answers.forEach { answer ->
-                    val selected = ExamAttemptStore.selectedAnswerIds(question.id).contains(answer.id)
-                    val borderColor = if (selected) AppIndigo else AppCardBorder
-                    val bgColor = if (selected) AppIndigo.copy(alpha = 0.06f) else Color.Transparent
+                    question.answers.orEmpty().forEachIndexed { answerIndex, answer ->
+                        val selected = ExamAttemptStore.selectedAnswerIds(question.questionId).contains(answer.id.toString())
+                        val borderColor = if (selected) AppIndigo else AppCardBorder
+                        val bgColor = if (selected) AppIndigo.copy(alpha = 0.06f) else Color.Transparent
 
-                    Surface(
-                        onClick = { ExamAttemptStore.selectAnswer(question.id, answer.id, question.type) },
-                        shape = MaterialTheme.shapes.medium,
-                        color = bgColor,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .border(1.5.dp, borderColor, MaterialTheme.shapes.medium)
-                    ) {
-                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (question.type.name == "MULTI") {
-                                Checkbox(
-                                    selected,
-                                    { ExamAttemptStore.selectAnswer(question.id, answer.id, question.type) },
-                                    colors = CheckboxDefaults.colors(checkedColor = AppIndigo)
-                                )
-                            } else {
-                                RadioButton(
-                                    selected,
-                                    { ExamAttemptStore.selectAnswer(question.id, answer.id, question.type) },
-                                    colors = RadioButtonDefaults.colors(selectedColor = AppIndigo)
+                        Surface(
+                            onClick = { ExamAttemptStore.selectBackendAnswer(question.questionId, answer.id, question.type) },
+                            shape = MaterialTheme.shapes.medium,
+                            color = bgColor,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .border(1.5.dp, borderColor, MaterialTheme.shapes.medium)
+                        ) {
+                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                if (question.type == "MULTI") {
+                                    Checkbox(
+                                        selected,
+                                        { ExamAttemptStore.selectBackendAnswer(question.questionId, answer.id, question.type) },
+                                        colors = CheckboxDefaults.colors(checkedColor = AppIndigo)
+                                    )
+                                } else {
+                                    RadioButton(
+                                        selected,
+                                        { ExamAttemptStore.selectBackendAnswer(question.questionId, answer.id, question.type) },
+                                        colors = RadioButtonDefaults.colors(selectedColor = AppIndigo)
+                                    )
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "${'A' + answerIndex}. ${answer.content}",
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (selected) AppIndigo else AppText
                                 )
                             }
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                "${answer.id}. ${answer.text}",
-                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                color = if (selected) AppIndigo else AppText
-                            )
                         }
+                    }
+                } else {
+                    val question = MockData.questions[safeIndex]
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        ChipText("Q${question.id} / ${MockData.questions.size}", AppIndigo)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Save, null, tint = AppMint, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Saved 10:32", color = AppMint, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text(question.content, style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(16.dp))
+
+                    question.answers.forEach { answer ->
+                        val selected = ExamAttemptStore.selectedAnswerIds(question.id).contains(answer.id)
+                        val borderColor = if (selected) AppIndigo else AppCardBorder
+                        val bgColor = if (selected) AppIndigo.copy(alpha = 0.06f) else Color.Transparent
+
+                        Surface(
+                            onClick = { ExamAttemptStore.selectAnswer(question.id, answer.id, question.type) },
+                            shape = MaterialTheme.shapes.medium,
+                            color = bgColor,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .border(1.5.dp, borderColor, MaterialTheme.shapes.medium)
+                        ) {
+                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                if (question.type.name == "MULTI") {
+                                    Checkbox(
+                                        selected,
+                                        { ExamAttemptStore.selectAnswer(question.id, answer.id, question.type) },
+                                        colors = CheckboxDefaults.colors(checkedColor = AppIndigo)
+                                    )
+                                } else {
+                                    RadioButton(
+                                        selected,
+                                        { ExamAttemptStore.selectAnswer(question.id, answer.id, question.type) },
+                                        colors = RadioButtonDefaults.colors(selectedColor = AppIndigo)
+                                    )
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "${answer.id}. ${answer.text}",
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (selected) AppIndigo else AppText
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            }
+
+            }
+
+            Spacer(Modifier.height(10.dp))
+            InfoBanner("If network is lost, answers are stored locally and sync later.", AppAmber, Icons.Default.WifiOff)
+
+            SectionTitle("Quick Navigation")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (useBackendQuestions) backendQuestions.forEachIndexed { i, q ->
+                    val color = when {
+                        i == index -> AppIndigo
+                        ExamAttemptStore.isAnswered(q.questionId) -> AppMint
+                        else -> AppMuted
+                    }
+                    val isCurrent = i == index
+                    Box(
+                        Modifier
+                            .size(42.dp)
+                            .background(if (isCurrent) color else color.copy(alpha = .10f), CircleShape)
+                            .then(if (!isCurrent) Modifier.border(1.dp, color.copy(alpha = 0.3f), CircleShape) else Modifier)
+                            .clickable { index = i },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text((i + 1).toString(), color = if (isCurrent) Color.White else color, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                } else MockData.questions.forEachIndexed { i, q ->
+                    val color = when {
+                        i == index -> AppIndigo
+                        ExamAttemptStore.isAnswered(q.id) -> AppMint
+                        else -> AppMuted
+                    }
+                    val isCurrent = i == index
+                    Box(
+                        Modifier
+                            .size(42.dp)
+                            .background(if (isCurrent) color else color.copy(alpha = .10f), CircleShape)
+                            .then(if (!isCurrent) Modifier.border(1.dp, color.copy(alpha = 0.3f), CircleShape) else Modifier)
+                            .clickable { index = i },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(q.id.toString(), color = if (isCurrent) Color.White else color, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
             }
         }
 
         Spacer(Modifier.height(10.dp))
-        InfoBanner("If network is lost, answers are stored locally and sync later.", AppAmber, Icons.Default.WifiOff)
-
-        SectionTitle("Quick Navigation")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MockData.questions.forEachIndexed { i, q ->
-                val color = when {
-                    i == index -> AppIndigo
-                    ExamAttemptStore.isAnswered(q.id) -> AppMint
-                    else -> AppMuted
-                }
-                val isCurrent = i == index
-                Box(
-                    Modifier
-                        .size(42.dp)
-                        .background(if (isCurrent) color else color.copy(alpha = .10f), CircleShape)
-                        .then(if (!isCurrent) Modifier.border(1.dp, color.copy(alpha = 0.3f), CircleShape) else Modifier)
-                        .clickable { index = i },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(q.id.toString(), color = if (isCurrent) Color.White else color, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
-            }
-        }
-
-        Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(
                 onClick = { if (index > 0) index-- },
+                enabled = totalQuestions > 0,
                 modifier = Modifier
                     .weight(1f)
                     .height(48.dp),
@@ -418,7 +684,8 @@ fun ExamTakingScreen(onSubmit: () -> Unit, onBack: () -> Unit) {
                 Text("Previous")
             }
             Button(
-                onClick = { if (index < MockData.questions.lastIndex) index++ },
+                onClick = { if (index < totalQuestions - 1) index++ },
+                enabled = totalQuestions > 0,
                 modifier = Modifier
                     .weight(1f)
                     .height(48.dp),
@@ -431,9 +698,8 @@ fun ExamTakingScreen(onSubmit: () -> Unit, onBack: () -> Unit) {
             }
         }
 
-        Spacer(Modifier.weight(1f))
-        PrimaryAction("Submit Exam", onClick = onSubmit)
-        Spacer(Modifier.height(18.dp))
+        PrimaryAction("Submit Exam", onClick = { if (totalQuestions > 0) onSubmit() })
+        Spacer(Modifier.height(10.dp))
     }
 }
 
@@ -523,6 +789,55 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
 
 @Composable
 fun ResultScreen(onBack: () -> Unit) {
+    var backendResult by remember { mutableStateOf<ExamResultResponse?>(null) }
+    var backendMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            backendMessage = "Please sign in again."
+            return@LaunchedEffect
+        }
+        try {
+            val response = ApiClient.getResult(authorization, ExamAttemptStore.backendExamId)
+            backendResult = response.data
+            backendMessage = if (response.success) "Backend result loaded." else response.message
+        } catch (exception: Exception) {
+            backendMessage = "Backend result is not available."
+        }
+    }
+
+    AppBackground {
+        ExamTopBar("Results", onBack)
+        GradientHero(
+            backendResult?.score ?: "--",
+            "Status: ${backendResult?.status ?: "UNKNOWN"}"
+        ) { StatusPill(NetworkState.SYNCED) }
+
+        Spacer(Modifier.height(12.dp))
+        if (backendMessage != null) {
+            InfoBanner(
+                backendMessage.orEmpty(),
+                if (backendResult != null) AppMint else AppAmber,
+                if (backendResult != null) Icons.Default.CloudDone else Icons.Default.Info
+            )
+        }
+
+        SectionTitle("Backend Result")
+        Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = AppSurface), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Exam ID: ${backendResult?.examId ?: ExamAttemptStore.backendExamId}", fontWeight = FontWeight.Bold)
+                Text("Result ID: ${backendResult?.resultId ?: "--"}", color = AppMuted)
+                Text("Score: ${backendResult?.score ?: "--"}", color = AppMuted)
+                Text("Status: ${backendResult?.status ?: "--"}", color = AppMuted)
+                Text("Submitted at: ${backendResult?.submittedAt ?: "--"}", color = AppMuted)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultScreenLegacy(onBack: () -> Unit) {
     val score = ExamAttemptStore.score()
     var backendResult by remember { mutableStateOf<ExamResultResponse?>(null) }
     var backendMessage by remember { mutableStateOf<String?>(null) }

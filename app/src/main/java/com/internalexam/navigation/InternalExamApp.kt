@@ -47,6 +47,7 @@ import com.internalexam.ui.student.SubmitConfirmationScreen
 import com.internalexam.ui.teacher.AutoGenerateExamScreen
 import com.internalexam.ui.teacher.CreateExamScreen
 import com.internalexam.ui.teacher.CreateQuestionScreen
+import com.internalexam.ui.teacher.TeacherExamListScreen
 import com.internalexam.ui.teacher.LiveMonitoringScreen
 import com.internalexam.ui.teacher.QuestionBankScreen
 import com.internalexam.ui.teacher.ReportDashboardScreen
@@ -67,6 +68,7 @@ object Routes {
     const val TeacherDashboard = "teacher/dashboard"
     const val Questions = "teacher/questions"
     const val CreateQuestion = "teacher/questions/create"
+    const val TeacherExams = "teacher/exams"
     const val CreateExam = "teacher/exams/create"
     const val GenerateExam = "teacher/exams/generate"
     const val Monitor = "teacher/monitor"
@@ -101,7 +103,15 @@ fun InternalExamApp() {
         ) {
             composable(Routes.Splash) { SplashScreen { nav.navigate(Routes.Login) } }
             composable(Routes.Login) { LoginScreen { role -> nav.navigate(role.startRoute()) { popUpTo(Routes.Login) { inclusive = true } } } }
-            composable(Routes.StudentHome) { StudentHomeScreen({ nav.navigate(Routes.Lobby) }, { nav.navigate(Routes.Result) }) }
+            composable(Routes.StudentHome) {
+                StudentHomeScreen(
+                    onLobby = { exam ->
+                        ExamAttemptStore.setBackendExamId(exam.id, exam)
+                        nav.navigate(Routes.Lobby)
+                    },
+                    onResult = { nav.navigate(Routes.Result) }
+                )
+            }
             composable(Routes.Lobby) {
                 ExamLobbyScreen(
                     onStart = { ExamAttemptStore.reset(); nav.navigate(Routes.Taking) },
@@ -111,9 +121,19 @@ fun InternalExamApp() {
             composable(Routes.Taking) { ExamTakingScreen({ nav.navigate(Routes.Submit) }, { nav.popBackStack() }) }
             composable(Routes.Submit) { SubmitConfirmationScreen({ nav.navigate(Routes.Result) }, { nav.popBackStack() }) }
             composable(Routes.Result) { ResultScreen { nav.popBackStack() } }
-            composable(Routes.TeacherDashboard) { TeacherDashboardScreen({ nav.navigate(Routes.Questions) }, { nav.navigate(Routes.CreateExam) }, { nav.navigate(Routes.GenerateExam) }, { nav.navigate(Routes.Monitor) }, { nav.navigate(Routes.Reports) }) }
+            composable(Routes.TeacherDashboard) { TeacherDashboardScreen({ nav.navigate(Routes.Questions) }, { nav.navigate(Routes.TeacherExams) }, { nav.navigate(Routes.GenerateExam) }, { nav.navigate(Routes.Monitor) }, { nav.navigate(Routes.Reports) }) }
             composable(Routes.Questions) { QuestionBankScreen({ nav.navigate(Routes.CreateQuestion) }, { nav.popBackStack() }) }
             composable(Routes.CreateQuestion) { CreateQuestionScreen { nav.popBackStack() } }
+            composable(Routes.TeacherExams) {
+                TeacherExamListScreen(
+                    onCreateExam = { nav.navigate(Routes.CreateExam) },
+                    onAddQuestion = { exam ->
+                        ExamAttemptStore.setBackendExamId(exam.id, exam)
+                        nav.navigate(Routes.CreateQuestion)
+                    },
+                    onBack = { nav.popBackStack() }
+                )
+            }
             composable(Routes.CreateExam) { CreateExamScreen({ nav.navigate(Routes.GenerateExam) }, { nav.popBackStack() }) }
             composable(Routes.GenerateExam) { AutoGenerateExamScreen { nav.popBackStack() } }
             composable(Routes.Monitor) { LiveMonitoringScreen { nav.popBackStack() } }
@@ -146,7 +166,7 @@ private fun RoleBottomBar(nav: NavHostController, current: String, onLogout: () 
         teacher -> listOf(
             NavItem("Dashboard", Routes.TeacherDashboard, Icons.Default.Dashboard),
             NavItem("Questions", Routes.Questions, Icons.Default.QuestionAnswer),
-            NavItem("Exams", Routes.CreateExam, Icons.Default.Quiz)
+            NavItem("Exams", Routes.TeacherExams, Icons.Default.Quiz)
         )
         else -> listOf(
             NavItem("Dashboard", Routes.AdminDashboard, Icons.Default.Dashboard),

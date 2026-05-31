@@ -22,6 +22,27 @@ interface AuthApi {
         @Body request: ExamCreateRequest
     ): ApiResponse<ExamResponse>
 
+    @GET("api/exams")
+    suspend fun getExams(
+        @Header("Authorization") authorization: String
+    ): ApiResponse<List<ExamResponse>>
+
+    @GET("api/questions")
+    suspend fun getQuestions(
+        @Header("Authorization") authorization: String
+    ): ApiResponse<List<QuestionResponse>>
+
+    @GET("api/subjects")
+    suspend fun getSubjects(
+        @Header("Authorization") authorization: String
+    ): ApiResponse<List<SubjectResponse>>
+
+    @GET("api/subjects/{subjectId}/topics")
+    suspend fun getTopics(
+        @Header("Authorization") authorization: String,
+        @Path("subjectId") subjectId: Long
+    ): ApiResponse<List<TopicResponse>>
+
     @POST("api/exams/generate")
     suspend fun generateExam(
         @Header("Authorization") authorization: String,
@@ -40,4 +61,17 @@ interface AuthApi {
         @Header("Authorization") authorization: String,
         @Path("examId") examId: Long
     ): ApiResponse<ExamResultResponse>
+
+    @GET("api/exams/{examId}/questions")
+    suspend fun getExamQuestions(
+        @Header("Authorization") authorization: String,
+        @Path("examId") examId: Long
+    ): ApiResponse<List<ExamQuestionResponse>>
+
+    @POST("api/exams/{examId}/questions")
+    suspend fun createQuestionForExam(
+        @Header("Authorization") authorization: String,
+        @Path("examId") examId: Long,
+        @Body request: ExamQuestionCreateRequest
+    ): ApiResponse<ExamQuestionResponse>
 }
