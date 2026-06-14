@@ -7,11 +7,11 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material3.Icon
@@ -39,6 +39,7 @@ import com.internalexam.ui.admin.AdminDashboardScreen
 import com.internalexam.ui.admin.UserManagementScreen
 import com.internalexam.ui.auth.LoginScreen
 import com.internalexam.ui.auth.SplashScreen
+import com.internalexam.ui.profile.ProfileScreen
 import com.internalexam.ui.student.ExamLobbyScreen
 import com.internalexam.ui.student.ExamTakingScreen
 import com.internalexam.ui.student.ResultScreen
@@ -47,6 +48,9 @@ import com.internalexam.ui.student.SubmitConfirmationScreen
 import com.internalexam.ui.teacher.AutoGenerateExamScreen
 import com.internalexam.ui.teacher.CreateExamScreen
 import com.internalexam.ui.teacher.CreateQuestionScreen
+import com.internalexam.ui.teacher.EditExamScreen
+import com.internalexam.ui.teacher.EditQuestionScreen
+import com.internalexam.ui.teacher.ExamQuestionListScreen
 import com.internalexam.ui.teacher.TeacherExamListScreen
 import com.internalexam.ui.teacher.LiveMonitoringScreen
 import com.internalexam.ui.teacher.QuestionBankScreen
@@ -60,6 +64,7 @@ import com.internalexam.ui.theme.AppSurface
 object Routes {
     const val Splash = "splash"
     const val Login = "login"
+    const val Profile = "profile"
     const val StudentHome = "student/home"
     const val Lobby = "student/lobby"
     const val Taking = "student/taking"
@@ -68,8 +73,11 @@ object Routes {
     const val TeacherDashboard = "teacher/dashboard"
     const val Questions = "teacher/questions"
     const val CreateQuestion = "teacher/questions/create"
+    const val ExamQuestions = "teacher/exams/questions"
+    const val EditQuestion = "teacher/questions/edit"
     const val TeacherExams = "teacher/exams"
     const val CreateExam = "teacher/exams/create"
+    const val EditExam = "teacher/exams/edit"
     const val GenerateExam = "teacher/exams/generate"
     const val Monitor = "teacher/monitor"
     const val Reports = "teacher/reports"
@@ -83,13 +91,7 @@ fun InternalExamApp() {
     val current = nav.currentBackStackEntryAsState().value?.destination?.route.orEmpty()
     Scaffold(
         bottomBar = {
-            RoleBottomBar(nav, current) {
-                SessionManager.clear()
-                nav.navigate(Routes.Login) {
-                    popUpTo(Routes.Splash) { inclusive = true }
-                    launchSingleTop = true
-                }
-            }
+            RoleBottomBar(nav, current)
         }
     ) { innerPadding ->
         NavHost(
@@ -103,6 +105,15 @@ fun InternalExamApp() {
         ) {
             composable(Routes.Splash) { SplashScreen { nav.navigate(Routes.Login) } }
             composable(Routes.Login) { LoginScreen { role -> nav.navigate(role.startRoute()) { popUpTo(Routes.Login) { inclusive = true } } } }
+            composable(Routes.Profile) {
+                ProfileScreen {
+                    SessionManager.clear()
+                    nav.navigate(Routes.Login) {
+                        popUpTo(Routes.Splash) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            }
             composable(Routes.StudentHome) {
                 StudentHomeScreen(
                     onLobby = { exam ->
@@ -131,10 +142,30 @@ fun InternalExamApp() {
                         ExamAttemptStore.setBackendExamId(exam.id, exam)
                         nav.navigate(Routes.CreateQuestion)
                     },
+                    onViewQuestions = { exam ->
+                        ExamAttemptStore.setBackendExamId(exam.id, exam)
+                        nav.navigate(Routes.ExamQuestions)
+                    },
+                    onEditExam = { exam ->
+                        ExamAttemptStore.setBackendExamId(exam.id, exam)
+                        nav.navigate(Routes.EditExam)
+                    },
                     onBack = { nav.popBackStack() }
                 )
             }
+            composable(Routes.ExamQuestions) {
+                ExamQuestionListScreen(
+                    onAddQuestion = { nav.navigate(Routes.CreateQuestion) },
+                    onEditQuestion = { question ->
+                        ExamAttemptStore.setSelectedQuestion(question)
+                        nav.navigate(Routes.EditQuestion)
+                    },
+                    onBack = { nav.popBackStack() }
+                )
+            }
+            composable(Routes.EditQuestion) { EditQuestionScreen { nav.popBackStack() } }
             composable(Routes.CreateExam) { CreateExamScreen({ nav.navigate(Routes.GenerateExam) }, { nav.popBackStack() }) }
+            composable(Routes.EditExam) { EditExamScreen { nav.popBackStack() } }
             composable(Routes.GenerateExam) { AutoGenerateExamScreen { nav.popBackStack() } }
             composable(Routes.Monitor) { LiveMonitoringScreen { nav.popBackStack() } }
             composable(Routes.Reports) { ReportDashboardScreen { nav.popBackStack() } }
@@ -151,26 +182,32 @@ private fun Role.startRoute(): String = when (this) {
 }
 
 @Composable
-private fun RoleBottomBar(nav: NavHostController, current: String, onLogout: () -> Unit) {
-    val student = current.startsWith("student")
-    val teacher = current.startsWith("teacher")
-    val admin = current.startsWith("admin")
-    if (!student && !teacher && !admin) return
+private fun RoleBottomBar(nav: NavHostController, current: String) {
+    val activeRole = when {
+        current.startsWith("student") -> Role.STUDENT
+        current.startsWith("teacher") -> Role.TEACHER
+        current.startsWith("admin") -> Role.ADMIN
+        current == Routes.Profile -> SessionManager.currentRole
+        else -> null
+    } ?: return
 
-    val items = when {
-        student -> listOf(
+    val items = when (activeRole) {
+        Role.STUDENT -> listOf(
             NavItem("Home", Routes.StudentHome, Icons.Default.Home),
             NavItem("Exams", Routes.Lobby, Icons.Default.Quiz),
-            NavItem("Results", Routes.Result, Icons.Default.Assessment)
+            NavItem("Results", Routes.Result, Icons.Default.Assessment),
+            NavItem("Profile", Routes.Profile, Icons.Default.Person)
         )
-        teacher -> listOf(
+        Role.TEACHER -> listOf(
             NavItem("Dashboard", Routes.TeacherDashboard, Icons.Default.Dashboard),
             NavItem("Questions", Routes.Questions, Icons.Default.QuestionAnswer),
-            NavItem("Exams", Routes.TeacherExams, Icons.Default.Quiz)
+            NavItem("Exams", Routes.TeacherExams, Icons.Default.Quiz),
+            NavItem("Profile", Routes.Profile, Icons.Default.Person)
         )
-        else -> listOf(
+        Role.ADMIN -> listOf(
             NavItem("Dashboard", Routes.AdminDashboard, Icons.Default.Dashboard),
-            NavItem("Users", Routes.Users, Icons.Default.Groups)
+            NavItem("Users", Routes.Users, Icons.Default.Groups),
+            NavItem("Profile", Routes.Profile, Icons.Default.Person)
         )
     }
 
@@ -201,20 +238,6 @@ private fun RoleBottomBar(nav: NavHostController, current: String, onLogout: () 
                 )
             )
         }
-        NavigationBarItem(
-            selected = false,
-            onClick = onLogout,
-            icon = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Sign out") },
-            label = { Text("Sign out") },
-            alwaysShowLabel = false,
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = AppIndigo,
-                selectedTextColor = AppIndigo,
-                indicatorColor = AppBg,
-                unselectedIconColor = AppMuted,
-                unselectedTextColor = AppMuted
-            )
-        )
     }
 }
 

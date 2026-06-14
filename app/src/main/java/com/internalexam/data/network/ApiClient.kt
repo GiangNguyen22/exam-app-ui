@@ -1,6 +1,9 @@
 package com.internalexam.data.network
 
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.io.IOException
@@ -28,8 +31,20 @@ object ApiClient {
         return callBackend { it.createQuestion(authorization, request) }
     }
 
+    suspend fun importQuestions(authorization: String, fileName: String, fileBytes: ByteArray): ApiResponse<QuestionImportResponse> {
+        return callBackend {
+            val body = fileBytes.toRequestBody("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".toMediaType())
+            val part = MultipartBody.Part.createFormData("file", fileName, body)
+            it.importQuestions(authorization, part)
+        }
+    }
+
     suspend fun createExam(authorization: String, request: ExamCreateRequest): ApiResponse<ExamResponse> {
         return callBackend { it.createExam(authorization, request) }
+    }
+
+    suspend fun updateExam(authorization: String, examId: Long, request: ExamUpdateRequest): ApiResponse<ExamResponse> {
+        return callBackend { it.updateExam(authorization, examId, request) }
     }
 
     suspend fun getExams(authorization: String): ApiResponse<List<ExamResponse>> {
@@ -60,6 +75,10 @@ object ApiClient {
         return callBackend { it.getResult(authorization, examId) }
     }
 
+    suspend fun getExamReport(authorization: String, examId: Long): ApiResponse<ExamReportResponse> {
+        return callBackend { it.getExamReport(authorization, examId) }
+    }
+
     suspend fun getExamQuestions(authorization: String, examId: Long): ApiResponse<List<ExamQuestionResponse>> {
         return callBackend { it.getExamQuestions(authorization, examId) }
     }
@@ -70,6 +89,19 @@ object ApiClient {
         request: ExamQuestionCreateRequest
     ): ApiResponse<ExamQuestionResponse> {
         return callBackend { it.createQuestionForExam(authorization, examId, request) }
+    }
+
+    suspend fun updateQuestionForExam(
+        authorization: String,
+        examId: Long,
+        questionId: Long,
+        request: ExamQuestionCreateRequest
+    ): ApiResponse<ExamQuestionResponse> {
+        return callBackend { it.updateQuestionForExam(authorization, examId, questionId, request) }
+    }
+
+    suspend fun getCurrentUser(authorization: String): ApiResponse<UserProfileResponse> {
+        return callBackend { it.getCurrentUser(authorization) }
     }
 
     private suspend fun <T> callBackend(block: suspend (AuthApi) -> T): T {

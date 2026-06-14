@@ -189,7 +189,7 @@ fun LoginScreen(onLogin: (Role) -> Unit) {
                 val token = response.data?.accessToken
                 val role = response.data?.roles.toAppRole()
                 if (response.success && !token.isNullOrBlank() && role != null) {
-                    SessionManager.saveToken(token)
+                    SessionManager.saveSession(token, role)
                     onLogin(role)
                 } else if (response.success && !token.isNullOrBlank()) {
                     error = "Your account has no app role assigned"
@@ -199,10 +199,10 @@ fun LoginScreen(onLogin: (Role) -> Unit) {
             } catch (exception: HttpException) {
                 error = when (exception.code()) {
                     401, 403 -> "Invalid username or password"
-                    else -> "Backend returned error ${exception.code()}"
+                    else -> "Sign in failed. Please try again."
                 }
             } catch (exception: Exception) {
-                error = "Cannot connect to the backend. Check that the server is running."
+                error = "Cannot sign in right now. Please try again later."
             } finally {
                 isLoading = false
             }
@@ -214,7 +214,6 @@ fun LoginScreen(onLogin: (Role) -> Unit) {
             .fillMaxSize()
             .background(Color(0xFFF6F4FF))
     ) {
-        // Gradient header
         Box(
             Modifier
                 .fillMaxWidth()
@@ -247,7 +246,6 @@ fun LoginScreen(onLogin: (Role) -> Unit) {
             }
         }
 
-        // Login card overlapping header
         Card(
             shape = MaterialTheme.shapes.large,
             colors = CardDefaults.cardColors(containerColor = AppSurface),
@@ -300,7 +298,6 @@ fun LoginScreen(onLogin: (Role) -> Unit) {
                 }
                 Spacer(Modifier.height(20.dp))
 
-                // Sign in button
                 Button(
                     onClick = { if (!isLoading) login() },
                     modifier = Modifier

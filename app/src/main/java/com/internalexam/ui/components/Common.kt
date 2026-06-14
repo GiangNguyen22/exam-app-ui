@@ -34,6 +34,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,6 +68,8 @@ import com.internalexam.ui.theme.BgGradient
 import com.internalexam.ui.theme.ButtonGradient
 import com.internalexam.ui.theme.HeroGradient
 
+val ScreenBottomPadding = 24.dp
+
 /* ── Background ── */
 @Composable
 fun AppBackground(content: @Composable ColumnScope.() -> Unit) {
@@ -80,6 +83,27 @@ fun AppBackground(content: @Composable ColumnScope.() -> Unit) {
 }
 
 /* ── Top bar ── */
+@Composable
+fun LoadingStateCard(message: String = "Loading...") {
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = AppSurface),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+    ) {
+        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                strokeWidth = 2.dp,
+                color = AppIndigo
+            )
+            Spacer(Modifier.width(14.dp))
+            Text(message, color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExamTopBar(title: String, onBack: (() -> Unit)? = null) {
@@ -134,7 +158,6 @@ fun GradientHero(title: String, subtitle: String, trailing: @Composable (() -> U
                 .background(HeroGradient)
                 .fillMaxWidth()
         ) {
-            // Decorative circle
             Box(
                 Modifier
                     .size(100.dp)

@@ -1,10 +1,14 @@
 package com.internalexam.data.network
 
+import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.Multipart
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.POST
+import retrofit2.http.PUT
 
 interface AuthApi {
     @POST("api/auth/login")
@@ -16,10 +20,24 @@ interface AuthApi {
         @Body request: QuestionCreateRequest
     ): ApiResponse<QuestionResponse>
 
+    @Multipart
+    @POST("api/questions/import")
+    suspend fun importQuestions(
+        @Header("Authorization") authorization: String,
+        @Part file: MultipartBody.Part
+    ): ApiResponse<QuestionImportResponse>
+
     @POST("api/exams")
     suspend fun createExam(
         @Header("Authorization") authorization: String,
         @Body request: ExamCreateRequest
+    ): ApiResponse<ExamResponse>
+
+    @PUT("api/exams/{examId}")
+    suspend fun updateExam(
+        @Header("Authorization") authorization: String,
+        @Path("examId") examId: Long,
+        @Body request: ExamUpdateRequest
     ): ApiResponse<ExamResponse>
 
     @GET("api/exams")
@@ -62,6 +80,12 @@ interface AuthApi {
         @Path("examId") examId: Long
     ): ApiResponse<ExamResultResponse>
 
+    @GET("api/results/exams/{examId}/report")
+    suspend fun getExamReport(
+        @Header("Authorization") authorization: String,
+        @Path("examId") examId: Long
+    ): ApiResponse<ExamReportResponse>
+
     @GET("api/exams/{examId}/questions")
     suspend fun getExamQuestions(
         @Header("Authorization") authorization: String,
@@ -74,4 +98,17 @@ interface AuthApi {
         @Path("examId") examId: Long,
         @Body request: ExamQuestionCreateRequest
     ): ApiResponse<ExamQuestionResponse>
+
+    @PUT("api/exams/{examId}/questions/{questionId}")
+    suspend fun updateQuestionForExam(
+        @Header("Authorization") authorization: String,
+        @Path("examId") examId: Long,
+        @Path("questionId") questionId: Long,
+        @Body request: ExamQuestionCreateRequest
+    ): ApiResponse<ExamQuestionResponse>
+
+    @GET("api/users/me")
+    suspend fun getCurrentUser(
+        @Header("Authorization") authorization: String
+    ): ApiResponse<UserProfileResponse>
 }

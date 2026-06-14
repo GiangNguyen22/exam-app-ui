@@ -2,6 +2,7 @@ package com.internalexam.data
 
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import com.internalexam.data.network.ExamAnswerSubmitRequest
 import com.internalexam.data.network.ExamResponse
 import com.internalexam.data.network.ExamQuestionResponse
 import com.internalexam.model.mock.MockData
@@ -9,11 +10,15 @@ import com.internalexam.model.mock.QuestionType
 
 object ExamAttemptStore {
     private val selectedAnswers = mutableStateMapOf<Int, Set<String>>()
+    private val fillAnswers = mutableStateMapOf<Int, String>()
+    private val answerSavedAt = mutableStateMapOf<Int, Long>()
     var backendQuestions = mutableStateOf<List<ExamQuestionResponse>>(emptyList())
         private set
     var backendExamId: Long = 1L
         private set
     var selectedExam = mutableStateOf<ExamResponse?>(null)
+        private set
+    var selectedQuestion = mutableStateOf<ExamQuestionResponse?>(null)
         private set
 
     fun setBackendExamId(examId: Long, exam: ExamResponse? = null) {
@@ -26,12 +31,26 @@ object ExamAttemptStore {
         backendQuestions.value = questions
     }
 
+    fun setSelectedQuestion(question: ExamQuestionResponse?) {
+        selectedQuestion.value = question
+    }
+
     fun usingBackendQuestions(): Boolean {
         return backendQuestions.value.isNotEmpty()
     }
 
     val answeredCount: Int
-        get() = selectedAnswers.count { it.value.isNotEmpty() }
+        get() = if (usingBackendQuestions()) {
+            backendQuestions.value.count { question ->
+                if (question.type == QuestionType.FILL_BLANK.name) {
+                    fillAnswer(question.questionId).isNotBlank()
+                } else {
+                    selectedAnswerIds(question.questionId).isNotEmpty()
+                }
+            }
+        } else {
+            selectedAnswers.count { it.value.isNotEmpty() }
+        }
 
     val unansweredCount: Int
         get() = totalQuestionCount - answeredCount
@@ -52,7 +71,12 @@ object ExamAttemptStore {
     }
 
     fun isAnswered(questionId: Long): Boolean {
-        return selectedAnswerIds(questionId).isNotEmpty()
+        val question = backendQuestions.value.firstOrNull { it.questionId == questionId }
+        return if (question?.type == QuestionType.FILL_BLANK.name) {
+            fillAnswer(questionId).isNotBlank()
+        } else {
+            selectedAnswerIds(questionId).isNotEmpty()
+        }
     }
 
     fun selectAnswer(questionId: Int, answerId: String, questionType: QuestionType) {
@@ -62,6 +86,7 @@ object ExamAttemptStore {
         } else {
             setOf(answerId)
         }
+        answerSavedAt[questionId] = System.currentTimeMillis()
     }
 
     fun selectBackendAnswer(questionId: Long, answerId: Long, type: String?) {
@@ -72,10 +97,41 @@ object ExamAttemptStore {
         } else {
             setOf(answerId.toString())
         }
+        answerSavedAt[key] = System.currentTimeMillis()
+    }
+
+    fun fillAnswer(questionId: Long): String {
+        return fillAnswers[questionId.toInt()].orEmpty()
+    }
+
+    fun setFillAnswer(questionId: Long, value: String) {
+        val key = questionId.toInt()
+        fillAnswers[key] = value
+        answerSavedAt[key] = System.currentTimeMillis()
+    }
+
+    fun savedAt(questionId: Int): Long? {
+        return answerSavedAt[questionId]
+    }
+
+    fun savedAt(questionId: Long): Long? {
+        return answerSavedAt[questionId.toInt()]
+    }
+
+    fun backendSubmitAnswers(): List<ExamAnswerSubmitRequest> {
+        return backendQuestions.value.map { question ->
+            ExamAnswerSubmitRequest(
+                questionId = question.questionId,
+                selectedAnswerIds = selectedAnswerIds(question.questionId).mapNotNull { it.toLongOrNull() },
+                fillContent = if (question.type == QuestionType.FILL_BLANK.name) fillAnswer(question.questionId) else null
+            )
+        }
     }
 
     fun reset() {
         selectedAnswers.clear()
+        fillAnswers.clear()
+        answerSavedAt.clear()
     }
 
     fun score(): AttemptScore {
