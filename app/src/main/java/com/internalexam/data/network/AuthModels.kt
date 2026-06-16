@@ -110,6 +110,32 @@ data class ExamResultResponse(
     val submittedAt: String?
 )
 
+data class ExamResultDetailResponse(
+    val resultId: Long,
+    val examId: Long,
+    val examTitle: String?,
+    val score: String?,
+    val status: String,
+    val submittedAt: String?,
+    val totalQuestions: Int?,
+    val correctCount: Int?,
+    val wrongCount: Int?,
+    val blankCount: Int?,
+    val questions: List<ResultQuestionResponse>?
+)
+
+data class ResultQuestionResponse(
+    val questionId: Long,
+    val orderIndex: Int?,
+    val content: String,
+    val type: String?,
+    val correct: Boolean?,
+    val blank: Boolean?,
+    val selectedAnswerIds: List<Long>?,
+    val fillContent: String?,
+    val answers: List<AnswerOptionResponse>?
+)
+
 data class ExamReportResponse(
     val examId: Long,
     val examCode: String?,

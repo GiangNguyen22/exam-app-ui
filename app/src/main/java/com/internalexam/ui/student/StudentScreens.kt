@@ -1,5 +1,6 @@
 package com.internalexam.ui.student
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -11,7 +12,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -21,9 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -31,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -38,8 +37,6 @@ import androidx.compose.material.icons.filled.EventBusy
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WifiOff
@@ -77,14 +74,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.internalexam.data.ExamAttemptStore
-import com.internalexam.data.AttemptScore
 import com.internalexam.data.SessionManager
 import com.internalexam.data.network.ApiClient
 import com.internalexam.data.network.ExamResponse
 import com.internalexam.data.network.ExamQuestionResponse
+import com.internalexam.data.network.ExamResultDetailResponse
 import com.internalexam.data.network.ExamResultResponse
+import com.internalexam.data.network.ResultQuestionResponse
 import com.internalexam.data.network.ExamSubmitRequest
-import com.internalexam.model.mock.MockData
 import com.internalexam.model.mock.NetworkState
 import com.internalexam.ui.components.AppBackground
 import com.internalexam.ui.components.AvatarCircle
@@ -112,6 +109,9 @@ import com.internalexam.ui.theme.AppSurface
 import com.internalexam.ui.theme.AppText
 import com.internalexam.ui.theme.BgGradient
 import com.internalexam.ui.theme.HeroGradient
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import retrofit2.HttpException
@@ -119,60 +119,96 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 @Composable
-fun StudentHomeScreen(onLobby: (ExamResponse) -> Unit, onResult: () -> Unit) {
+fun StudentHomeScreen(
+    onLobby: (ExamResponse) -> Unit,
+    onOpenResult: (ExamResponse) -> Unit,
+    onSeeAllResults: () -> Unit
+) {
     var exams by remember { mutableStateOf<List<ExamResponse>>(emptyList()) }
     var examMetadata by remember { mutableStateOf<Map<Long, StudentExamMetadata>>(emptyMap()) }
     var recentResults by remember { mutableStateOf<List<StudentRecentResult>>(emptyList()) }
     var loadMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var studentName by remember { mutableStateOf("Học sinh") }
+    var networkState by remember { mutableStateOf(NetworkState.SYNCING) }
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val greeting = when {
-        hour < 12 -> "Good morning"
-        hour < 17 -> "Good afternoon"
-        else -> "Good evening"
+        hour < 12 -> "Chào buổi sáng"
+        hour < 17 -> "Chào buổi chiều"
+        else -> "Chào buổi tối"
     }
 
     LaunchedEffect(Unit) {
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) {
-            loadMessage = "Please sign in again."
+            loadMessage = "Vui lòng đăng nhập lại."
+            networkState = NetworkState.OFFLINE
             isLoading = false
             return@LaunchedEffect
         }
         isLoading = true
+        // #7b: lấy tên thật của người dùng hiện tại.
+        runCatching { ApiClient.getCurrentUser(authorization).data }.getOrNull()?.let { profile ->
+            studentName = profile.fullName.takeIf { it.isNotBlank() } ?: profile.username
+        }
         try {
             val response = ApiClient.getExams(authorization)
-            exams = response.data.orEmpty()
+            val loadedExams = response.data.orEmpty()
+            val visibleExams = loadedExams.filterNot { it.isExpired() }
+            exams = visibleExams
             val subjectNamesById = runCatching {
                 ApiClient.getSubjects(authorization).data.orEmpty().associate { it.id to it.name }
             }.getOrDefault(emptyMap())
-            examMetadata = exams.associate { exam ->
-                val questions = runCatching {
-                    ApiClient.getExamQuestions(authorization, exam.id).data.orEmpty()
-                }.getOrDefault(emptyList())
-                val subjectIds = questions.mapNotNull { it.subjectId }.distinct()
-                val subjectName = when {
-                    subjectIds.size == 1 -> subjectNamesById[subjectIds.first()]
-                    subjectIds.size > 1 -> "Nhiều môn"
-                    else -> exam.subjectName ?: exam.subject
-                }
-                exam.id to StudentExamMetadata(
-                    questionCount = questions.size.takeIf { it > 0 } ?: exam.questionCount ?: exam.totalQuestions,
-                    subjectName = subjectName
-                )
-            }
-            recentResults = exams.mapNotNull { exam ->
-                runCatching {
-                    ApiClient.getResult(authorization, exam.id).data?.let { result ->
-                        StudentRecentResult(exam, result)
+
+            // #14: tải metadata + kết quả của từng đề song song thay vì tuần tự.
+            coroutineScope {
+                val metadataDeferred = visibleExams.map { exam ->
+                    async {
+                        val countFromExam = exam.questionCount ?: exam.totalQuestions
+                        val subjectFromExam = exam.subjectName ?: exam.subject
+                        if (countFromExam != null && !subjectFromExam.isNullOrBlank()) {
+                            exam.id to StudentExamMetadata(
+                                questionCount = countFromExam,
+                                subjectName = subjectFromExam
+                            )
+                        } else {
+                            val questions = runCatching {
+                                ApiClient.getExamQuestions(authorization, exam.id).data.orEmpty()
+                            }.getOrDefault(emptyList())
+                            val subjectIds = questions.mapNotNull { it.subjectId }.distinct()
+                            val subjectName = when {
+                                subjectIds.size == 1 -> subjectNamesById[subjectIds.first()]
+                                subjectIds.size > 1 -> "Nhiều môn"
+                                else -> subjectFromExam
+                            }
+                            exam.id to StudentExamMetadata(
+                                questionCount = questions.size.takeIf { it > 0 } ?: countFromExam,
+                                subjectName = subjectName
+                            )
+                        }
                     }
-                }.getOrNull()
-            }.sortedByDescending { it.result.submittedAt.orEmpty() }
+                }
+                val resultsDeferred = loadedExams.map { exam ->
+                    async {
+                        runCatching {
+                            ApiClient.getResult(authorization, exam.id).data?.let { result ->
+                                StudentRecentResult(exam, result)
+                            }
+                        }.getOrNull()
+                    }
+                }
+                examMetadata = metadataDeferred.awaitAll().toMap()
+                recentResults = resultsDeferred.awaitAll().filterNotNull()
+                    .sortedByDescending { it.result.submittedAt.orEmpty() }
+            }
             loadMessage = null
+            networkState = NetworkState.ONLINE
         } catch (exception: Exception) {
-            loadMessage = "Cannot load exams right now."
+            loadMessage = "Không tải được đề thi lúc này."
+            networkState = NetworkState.OFFLINE
         } finally {
             isLoading = false
         }
@@ -192,76 +228,43 @@ fun StudentHomeScreen(onLobby: (ExamResponse) -> Unit, onResult: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                AvatarCircle("Student", 50, AppIndigo)
+                AvatarCircle(studentName, 50, AppIndigo)
                 Spacer(Modifier.width(14.dp))
                 Column {
                     Text(greeting, color = AppMuted, style = MaterialTheme.typography.bodyMedium)
-                    Text("Student Dashboard", style = MaterialTheme.typography.headlineMedium)
+                    Text(studentName, style = MaterialTheme.typography.headlineMedium)
                 }
             }
-            StatusPill(NetworkState.ONLINE)
+            StatusPill(networkState)
         }
 
-        SectionTitle("Exam Rooms")
+        SectionTitle("Phòng thi")
         if (loadMessage != null) {
             InfoBanner(loadMessage.orEmpty(), AppAmber, Icons.Default.Info)
             Spacer(Modifier.height(12.dp))
         }
 
         if (isLoading) {
-            LoadingStateCard("Dang tai de thi...")
+            LoadingStateCard("Đang tải đề thi...")
         } else if (exams.isEmpty() && loadMessage == null) {
             EmptyExamState()
-        } else {
+            } else {
             exams.forEach { exam ->
-                val metadata = examMetadata[exam.id]
-                Card(
-                    shape = MaterialTheme.shapes.large,
-                    colors = CardDefaults.cardColors(containerColor = AppSurface),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp)
-                        .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
-                ) {
-                    Row(Modifier.height(IntrinsicSize.Min)) {
-                        Box(
-                            Modifier
-                                .width(5.dp)
-                                .fillMaxHeight()
-                                .clip(MaterialTheme.shapes.small)
-                                .background(AppIndigo)
-                        )
-                        Column(
-                            Modifier
-                                .padding(16.dp)
-                                .weight(1f)
-                        ) {
-                            Text(exam.title, style = MaterialTheme.typography.titleLarge)
-                            Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                ChipText(metadata.questionCountLabel(exam), AppBlue)
-                                ChipText(exam.durationLabel(), AppAmber)
-                                ChipText(metadata.subjectLabel(exam), AppIndigo)
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Text("Code ${exam.code}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
-                            Spacer(Modifier.height(14.dp))
-                            PrimaryAction("Enter Exam Room") { onLobby(exam) }
-                        }
-                    }
-                }
+                StudentExamRoomCard(exam, examMetadata[exam.id], onEnter = { onLobby(exam) })
             }
         }
 
-        SectionTitle("Recent Results")
-        if (recentResults.isEmpty()) {
+        SectionTitle("Kết quả gần đây")
+        if (isLoading) {
+            LoadingStateCard("Đang tải kết quả...")
+        } else if (recentResults.isEmpty()) {
             InfoBanner("Chưa có kết quả bài thi.", AppAmber, Icons.Default.Info)
         } else {
             recentResults.take(3).forEach { item ->
-                StudentResultCard(item)
+                StudentResultCard(item, onClick = { onOpenResult(item.exam) })
                 Spacer(Modifier.height(8.dp))
             }
-            TextButton(onClick = onResult) { Text("Xem chi tiết kết quả") }
+            TextButton(onClick = onSeeAllResults) { Text("Xem tất cả kết quả") }
         }
         Spacer(Modifier.height(ScreenBottomPadding))
     }
@@ -309,8 +312,152 @@ private fun EmptyExamState() {
     Spacer(Modifier.height(12.dp))
 }
 
+/** Thẻ một phòng thi, dùng chung cho màn Home và màn danh sách đề thi. */
 @Composable
-private fun StudentResultCard(item: StudentRecentResult) {
+private fun StudentExamRoomCard(
+    exam: ExamResponse,
+    metadata: StudentExamMetadata?,
+    onEnter: () -> Unit
+) {
+    val canEnterExam = exam.isOpenNow()
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = AppSurface),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp)
+            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+    ) {
+        Row(Modifier.height(IntrinsicSize.Min)) {
+            Box(
+                Modifier
+                    .width(5.dp)
+                    .fillMaxHeight()
+                    .clip(MaterialTheme.shapes.small)
+                    .background(AppIndigo)
+            )
+            Column(
+                Modifier
+                    .padding(16.dp)
+                    .weight(1f)
+            ) {
+                Text(exam.title, style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    ChipText(metadata.questionCountLabel(exam), AppBlue)
+                    ChipText(exam.durationLabel(), AppAmber)
+                    ChipText(metadata.subjectLabel(exam), AppIndigo)
+                }
+                if (!canEnterExam) {
+                    Spacer(Modifier.height(8.dp))
+                    ChipText("Chưa mở", AppAmber)
+                }
+                Spacer(Modifier.height(14.dp))
+                Button(
+                    onClick = onEnter,
+                    enabled = canEnterExam,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = MaterialTheme.shapes.medium,
+                    colors = ButtonDefaults.buttonColors(containerColor = AppIndigo)
+                ) {
+                    Text(if (canEnterExam) "Vào phòng thi" else "Chưa tới giờ mở")
+                }
+            }
+        }
+    }
+}
+
+/** Tải danh sách phòng thi (đã lọc đề hết hạn) + metadata môn/số câu, song song. */
+private suspend fun loadStudentExamRooms(
+    authorization: String
+): Pair<List<ExamResponse>, Map<Long, StudentExamMetadata>> {
+    val visibleExams = ApiClient.getExams(authorization).data.orEmpty().filterNot { it.isExpired() }
+    val subjectNamesById = runCatching {
+        ApiClient.getSubjects(authorization).data.orEmpty().associate { it.id to it.name }
+    }.getOrDefault(emptyMap())
+    val metadata = coroutineScope {
+        visibleExams.map { exam ->
+            async {
+                val countFromExam = exam.questionCount ?: exam.totalQuestions
+                val subjectFromExam = exam.subjectName ?: exam.subject
+                if (countFromExam != null && !subjectFromExam.isNullOrBlank()) {
+                    exam.id to StudentExamMetadata(countFromExam, subjectFromExam)
+                } else {
+                    val questions = runCatching {
+                        ApiClient.getExamQuestions(authorization, exam.id).data.orEmpty()
+                    }.getOrDefault(emptyList())
+                    val subjectIds = questions.mapNotNull { it.subjectId }.distinct()
+                    val subjectName = when {
+                        subjectIds.size == 1 -> subjectNamesById[subjectIds.first()]
+                        subjectIds.size > 1 -> "Nhiều môn"
+                        else -> subjectFromExam
+                    }
+                    exam.id to StudentExamMetadata(
+                        questionCount = questions.size.takeIf { it > 0 } ?: countFromExam,
+                        subjectName = subjectName
+                    )
+                }
+            }
+        }.awaitAll().toMap()
+    }
+    return visibleExams to metadata
+}
+
+@Composable
+fun StudentExamsScreen(onLobby: (ExamResponse) -> Unit, onBack: () -> Unit) {
+    var exams by remember { mutableStateOf<List<ExamResponse>>(emptyList()) }
+    var examMetadata by remember { mutableStateOf<Map<Long, StudentExamMetadata>>(emptyMap()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var message by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Vui lòng đăng nhập lại."
+            isLoading = false
+            return@LaunchedEffect
+        }
+        try {
+            val (loadedExams, metadata) = loadStudentExamRooms(authorization)
+            exams = loadedExams
+            examMetadata = metadata
+            message = null
+        } catch (exception: Exception) {
+            message = "Không tải được đề thi lúc này."
+        } finally {
+            isLoading = false
+        }
+    }
+
+    AppBackground {
+        ExamTopBar("Phòng thi", onBack)
+        if (message != null) {
+            InfoBanner(message.orEmpty(), AppAmber, Icons.Default.Info)
+            Spacer(Modifier.height(12.dp))
+        }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
+            if (isLoading) {
+                LoadingStateCard("Đang tải đề thi...")
+            } else if (exams.isEmpty()) {
+                EmptyExamState()
+            } else {
+                exams.forEach { exam ->
+                    StudentExamRoomCard(exam, examMetadata[exam.id], onEnter = { onLobby(exam) })
+                }
+            }
+            Spacer(Modifier.height(ScreenBottomPadding))
+        }
+    }
+}
+
+@Composable
+private fun StudentResultCard(item: StudentRecentResult, onClick: () -> Unit) {
     val scoreColor = scoreColor(item.result.score)
     Card(
         shape = MaterialTheme.shapes.large,
@@ -318,6 +465,7 @@ private fun StudentResultCard(item: StudentRecentResult) {
         modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+            .clickable { onClick() }
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -340,6 +488,104 @@ private fun StudentResultCard(item: StudentRecentResult) {
                 Text(resultStatusLabel(item.result.status), color = AppMuted, style = MaterialTheme.typography.bodyMedium)
             }
             Text(resultDate(item.result.submittedAt), color = AppMuted, style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.width(6.dp))
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppMuted, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+/** Tải kết quả của mọi đề (song song) cho danh sách "Tất cả kết quả". */
+private suspend fun loadStudentResults(authorization: String): List<StudentRecentResult> {
+    val exams = ApiClient.getExams(authorization).data.orEmpty()
+    return coroutineScope {
+        exams.map { exam ->
+            async {
+                runCatching {
+                    ApiClient.getResult(authorization, exam.id).data?.let { StudentRecentResult(exam, it) }
+                }.getOrNull()
+            }
+        }.awaitAll().filterNotNull()
+            .sortedByDescending { it.result.submittedAt.orEmpty() }
+    }
+}
+
+@Composable
+fun StudentResultsScreen(onOpenResult: (ExamResponse) -> Unit, onBack: () -> Unit) {
+    var results by remember { mutableStateOf<List<StudentRecentResult>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var message by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Vui lòng đăng nhập lại."
+            isLoading = false
+            return@LaunchedEffect
+        }
+        try {
+            results = loadStudentResults(authorization)
+            message = null
+        } catch (exception: Exception) {
+            message = "Không tải được kết quả lúc này."
+        } finally {
+            isLoading = false
+        }
+    }
+
+    AppBackground {
+        ExamTopBar("Kết quả", onBack)
+        SectionTitle("Tất cả kết quả")
+        if (message != null) {
+            InfoBanner(message.orEmpty(), AppAmber, Icons.Default.Info)
+            Spacer(Modifier.height(12.dp))
+        }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
+            if (isLoading) {
+                LoadingStateCard("Đang tải kết quả...")
+            } else if (results.isEmpty()) {
+                EmptyResultsState()
+            } else {
+                results.forEach { item ->
+                    StudentResultCard(item, onClick = { onOpenResult(item.exam) })
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+            Spacer(Modifier.height(ScreenBottomPadding))
+        }
+    }
+}
+
+@Composable
+private fun EmptyResultsState() {
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = AppSurface),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                Modifier
+                    .size(64.dp)
+                    .background(AppAmber.copy(alpha = 0.12f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Assessment, contentDescription = null, tint = AppAmber, modifier = Modifier.size(34.dp))
+            }
+            Spacer(Modifier.height(14.dp))
+            Text("Chưa có kết quả bài thi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text("Hoàn thành một bài thi để xem kết quả ở đây.", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -383,6 +629,40 @@ private fun resultDate(value: String?): String {
     return value?.takeIf { it.isNotBlank() }?.replace("T", " ")?.take(16) ?: "--"
 }
 
+private fun ExamResponse.isExpired(now: Long = System.currentTimeMillis()): Boolean {
+    val endAt = endTime.parseBackendTimeMillis() ?: return false
+    return endAt <= now
+}
+
+private fun ExamResponse.isOpenNow(now: Long = System.currentTimeMillis()): Boolean {
+    val startAt = startTime.parseBackendTimeMillis()
+    val endAt = endTime.parseBackendTimeMillis()
+    return (startAt == null || startAt <= now) && (endAt == null || endAt > now)
+}
+
+private fun String?.parseBackendTimeMillis(): Long? {
+    val raw = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val patterns = listOf(
+        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+        "yyyy-MM-dd'T'HH:mm:ssXXX",
+        "yyyy-MM-dd'T'HH:mm:ss",
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd HH:mm"
+    )
+    return patterns.firstNotNullOfOrNull { pattern ->
+        runCatching {
+            SimpleDateFormat(pattern, Locale.US).apply {
+                isLenient = false
+                if (pattern.endsWith("'Z'")) {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }
+            }.parse(raw)?.time
+        }.getOrNull()
+    }
+}
+
 private fun formatTimeLeft(seconds: Int): String {
     val safeSeconds = seconds.coerceAtLeast(0)
     val minutes = safeSeconds / 60
@@ -394,147 +674,6 @@ private fun savedStatusText(savedAt: Long?): String {
     return savedAt?.let {
         "Đã lưu ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it))}"
     } ?: "Chưa lưu"
-}
-
-@Composable
-private fun StudentHomeScreenLegacy(onLobby: () -> Unit, onResult: () -> Unit) {
-    var exams by remember { mutableStateOf<List<ExamResponse>>(emptyList()) }
-    var loadMessage by remember { mutableStateOf<String?>(null) }
-    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-    val greeting = when {
-        hour < 12 -> "Good morning"
-        hour < 17 -> "Good afternoon"
-        else -> "Good evening"
-    }
-
-    LaunchedEffect(Unit) {
-        val authorization = SessionManager.authorizationHeader()
-        if (authorization == null) {
-            loadMessage = "Please sign in again."
-            return@LaunchedEffect
-        }
-        try {
-            val response = ApiClient.getExams(authorization)
-            exams = response.data.orEmpty()
-            loadMessage = if (exams.isEmpty()) "No active exams available." else null
-        } catch (exception: Exception) {
-            loadMessage = "Cannot load exams right now."
-        }
-    }
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(BgGradient)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp)
-    ) {
-        Spacer(Modifier.height(20.dp))
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AvatarCircle(MockData.currentStudent.name, 50, AppIndigo)
-                Spacer(Modifier.width(14.dp))
-                Column {
-                    Text(greeting, color = AppMuted, style = MaterialTheme.typography.bodyMedium)
-                    Text(MockData.currentStudent.name, style = MaterialTheme.typography.headlineMedium)
-                }
-            }
-            StatusPill(NetworkState.ONLINE)
-        }
-
-        SectionTitle("Today's Exam Rooms", "Downloaded exams can continue offline")
-
-        MockData.exams.forEach { exam ->
-            Card(
-                shape = MaterialTheme.shapes.large,
-                colors = CardDefaults.cardColors(containerColor = AppSurface),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
-            ) {
-                Row {
-                    Box(
-                        Modifier
-                            .width(5.dp)
-                            .height(170.dp)
-                            .clip(MaterialTheme.shapes.small)
-                            .background(HeroGradient)
-                    )
-                    Column(
-                        Modifier
-                            .padding(16.dp)
-                            .weight(1f)
-                    ) {
-                        Text(exam.title, style = MaterialTheme.typography.titleLarge)
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "${exam.subject} · ${exam.duration} min · ${exam.questions} questions",
-                            color = AppMuted,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ChipText("Opens ${exam.opens}")
-                            ChipText(
-                                if (exam.downloaded) "✓ Downloaded" else "Not downloaded",
-                                if (exam.downloaded) AppMint else AppAmber
-                            )
-                        }
-                        Spacer(Modifier.height(14.dp))
-                        PrimaryAction("Enter Exam Room", onClick = onLobby)
-                    }
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-        }
-
-        SectionTitle("Recent Results")
-        MockData.results.forEach { result ->
-            Card(
-                shape = MaterialTheme.shapes.large,
-                colors = CardDefaults.cardColors(containerColor = AppSurface),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-                    .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val scoreColor = when {
-                        result.score >= 8 -> AppMint
-                        result.score >= 5 -> AppAmber
-                        result.score > 0 -> AppRed
-                        else -> AppMuted
-                    }
-                    Box(
-                        Modifier
-                            .size(48.dp)
-                            .background(scoreColor.copy(alpha = 0.12f), CircleShape)
-                            .border(2.dp, scoreColor.copy(alpha = 0.3f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            if (result.score > 0) result.score.toString() else "—",
-                            fontWeight = FontWeight.Bold,
-                            color = scoreColor,
-                            fontSize = 16.sp
-                        )
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(result.exam, fontWeight = FontWeight.SemiBold)
-                        Text(result.status, color = AppMuted, style = MaterialTheme.typography.bodyMedium)
-                    }
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppMuted)
-                }
-            }
-        }
-        TextButton(onClick = onResult) { Text("View sample result →") }
-        Spacer(Modifier.height(24.dp))
-    }
 }
 
 @Composable
@@ -584,85 +723,69 @@ fun ExamLobbyScreen(onStart: () -> Unit, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ExamLobbyScreenLegacy(onStart: () -> Unit, onBack: () -> Unit) {
-    val exam = MockData.exams.first()
-    AppBackground {
-        ExamTopBar("Exam Room", onBack)
-        GradientHero(
-            exam.title,
-            "${exam.subject} · ${exam.duration} min · ${exam.questions} questions"
-        ) { StatusPill(NetworkState.SYNCED) }
-
-        SectionTitle("Schedule")
-        Card(
-            shape = MaterialTheme.shapes.large,
-            colors = CardDefaults.cardColors(containerColor = AppSurface),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
-        ) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(44.dp)
-                        .background(AppBlue.copy(alpha = 0.1f), MaterialTheme.shapes.medium),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Schedule, null, tint = AppBlue)
-                }
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("Opens ${exam.opens}", fontWeight = FontWeight.SemiBold)
-                    Text("Closes ${exam.closes}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-        MetricCard("Exam Package", if (exam.downloaded) "Downloaded ✓" else "Not ready", "Available offline after download", AppMint, Icons.Default.CloudDone)
-
-        SectionTitle("Exam Rules")
-        Card(
-            shape = MaterialTheme.shapes.large,
-            colors = CardDefaults.cardColors(containerColor = AppSurface),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
-        ) {
-            Column(Modifier.padding(16.dp)) {
-                RuleItem("Do not leave the app during the exam", Icons.Default.Warning, AppRed)
-                RuleItem("Screenshots are prohibited", Icons.Default.Security, AppRed)
-                RuleItem("Single device sign-in only", Icons.Default.PhoneAndroid, AppAmber)
-                Spacer(Modifier.height(8.dp))
-                InfoBanner("Events recorded: APP_EXIT, SCREENSHOT, LOST_CONNECTION, FOCUS_LOST", AppAmber, Icons.Default.Info)
-            }
-        }
-
-        Spacer(Modifier.weight(1f))
-        PrimaryAction("Start Exam", onClick = onStart)
-        Spacer(Modifier.height(18.dp))
-    }
-}
-
-@Composable
-fun ExamTakingScreen(onSubmit: () -> Unit, onBack: () -> Unit) {
+fun ExamTakingScreen(
+    onSubmit: () -> Unit,
+    onBack: () -> Unit,
+    onAutoSubmitted: () -> Unit = onSubmit
+) {
     var index by remember { mutableIntStateOf(0) }
     var loadMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var showExitConfirm by remember { mutableStateOf(false) }
+    var hasAutoSubmitted by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
     val backendQuestions = ExamAttemptStore.backendQuestions.value
-    val useBackendQuestions = true
     val totalQuestions = backendQuestions.size
     val safeIndex = index.coerceIn(0, (totalQuestions - 1).coerceAtLeast(0))
     val selectedExam = ExamAttemptStore.selectedExam.value
-    val initialTimeSeconds = ((selectedExam?.durationMinutes ?: 45).coerceAtLeast(1)) * 60
-    var timeLeftSeconds by remember(selectedExam?.id) { mutableIntStateOf(initialTimeSeconds) }
+    val durationMinutes = (selectedExam?.durationMinutes ?: 45).coerceAtLeast(1)
+    var timeLeftSeconds by remember(selectedExam?.id) { mutableIntStateOf(durationMinutes * 60) }
     val progress = if (totalQuestions > 0) ExamAttemptStore.answeredCount.toFloat() / totalQuestions else 0f
 
-    LaunchedEffect(selectedExam?.id) {
-        while (timeLeftSeconds > 0) {
+    suspend fun submitBecauseTimeExpired() {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            loadMessage = "Hết giờ nhưng phiên đăng nhập không còn hợp lệ."
+            onSubmit()
+            return
+        }
+        try {
+            ApiClient.submitExam(
+                authorization,
+                ExamAttemptStore.backendExamId,
+                ExamSubmitRequest(
+                    note = "Tự động nộp bài khi hết giờ với ${ExamAttemptStore.answeredCount} câu đã trả lời.",
+                    answers = ExamAttemptStore.backendSubmitAnswers()
+                )
+            )
+            onAutoSubmitted()
+        } catch (exception: Exception) {
+            loadMessage = "Hết giờ. Vui lòng xác nhận nộp bài."
+            onSubmit()
+        }
+    }
+
+    // Đồng hồ neo theo mốc kết thúc tuyệt đối -> không reset khi điều hướng qua lại,
+    // và tự động nộp bài khi hết giờ.
+    LaunchedEffect(selectedExam?.id, isLoading, totalQuestions) {
+        if (isLoading || totalQuestions == 0) return@LaunchedEffect
+        ExamAttemptStore.ensureAttemptDeadline(durationMinutes)
+        while (true) {
+            val endAt = ExamAttemptStore.attemptEndAtMillis
+            val remaining = if (endAt != null) {
+                ((endAt - System.currentTimeMillis()) / 1000L).toInt()
+            } else {
+                durationMinutes * 60
+            }
+            timeLeftSeconds = remaining.coerceAtLeast(0)
+            if (remaining <= 0) {
+                if (!hasAutoSubmitted) {
+                    hasAutoSubmitted = true
+                    submitBecauseTimeExpired()
+                }
+                break
+            }
             delay(1000L)
-            timeLeftSeconds--
         }
     }
 
@@ -675,12 +798,12 @@ fun ExamTakingScreen(onSubmit: () -> Unit, onBack: () -> Unit) {
                 val questions = response.data.orEmpty()
                 if (response.success && questions.isNotEmpty()) {
                     ExamAttemptStore.setBackendQuestions(questions)
-                    loadMessage = "${questions.size} questions ready."
+                    loadMessage = "Đã tải ${questions.size} câu hỏi."
                 } else {
-                    loadMessage = "No questions available for this exam."
+                    loadMessage = "Đề thi này chưa có câu hỏi."
                 }
             } catch (exception: Exception) {
-                loadMessage = "Cannot load questions right now."
+                loadMessage = "Không tải được câu hỏi lúc này."
             } finally {
                 isLoading = false
             }
@@ -689,8 +812,10 @@ fun ExamTakingScreen(onSubmit: () -> Unit, onBack: () -> Unit) {
         }
     }
 
+    BackHandler(enabled = !showExitConfirm) { showExitConfirm = true }
+
     AppBackground {
-        ExamTopBar(selectedExam?.title ?: "Exam", onBack)
+        ExamTopBar(selectedExam?.title ?: "Đề thi") { showExitConfirm = true }
 
         // Timer & sync bar
         Row(
@@ -724,7 +849,7 @@ fun ExamTakingScreen(onSubmit: () -> Unit, onBack: () -> Unit) {
         StyledProgress(progress, AppIndigo)
         Spacer(Modifier.height(14.dp))
         if (loadMessage != null) {
-            Text(loadMessage.orEmpty(), color = if (useBackendQuestions) AppMint else AppMuted, style = MaterialTheme.typography.bodyMedium)
+            Text(loadMessage.orEmpty(), color = AppMint, style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(8.dp))
         }
 
@@ -734,168 +859,110 @@ fun ExamTakingScreen(onSubmit: () -> Unit, onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState())
         ) {
             if (isLoading) {
-                LoadingStateCard("Dang tai cau hoi...")
+                LoadingStateCard("Đang tải câu hỏi...")
             } else if (totalQuestions == 0) {
-                InfoBanner("This exam does not have questions yet.", AppAmber, Icons.Default.Info)
+                InfoBanner("Đề thi này chưa có câu hỏi.", AppAmber, Icons.Default.Info)
             } else {
-            // Question card
-            AnimatedContent(
-                targetState = safeIndex,
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
-                label = "QuestionTransition"
-            ) { questionIndex ->
-            Card(
-                shape = MaterialTheme.shapes.large,
-                colors = CardDefaults.cardColors(containerColor = AppSurface),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
-            ) {
-                Column(Modifier.padding(18.dp)) {
-                if (useBackendQuestions) {
+                // Question card
+                AnimatedContent(
+                    targetState = safeIndex,
+                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                    label = "QuestionTransition"
+                ) { questionIndex ->
                     val question = backendQuestions[questionIndex]
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        val displayOrder = question.orderIndex?.takeIf { it > 0 } ?: (questionIndex + 1)
-                        ChipText("Câu $displayOrder / ${backendQuestions.size}", AppIndigo)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Save, null, tint = AppMint, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(savedStatusText(ExamAttemptStore.savedAt(question.questionId)), color = AppMint, style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    Text(question.content, style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(16.dp))
-
-                    if (question.type == "FILL_BLANK") {
-                        OutlinedTextField(
-                            value = ExamAttemptStore.fillAnswer(question.questionId),
-                            onValueChange = { ExamAttemptStore.setFillAnswer(question.questionId, it) },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Your answer") },
-                            shape = MaterialTheme.shapes.medium
-                        )
-                    } else {
-                        question.answers.orEmpty().forEachIndexed { answerIndex, answer ->
-                            val selected = ExamAttemptStore.selectedAnswerIds(question.questionId).contains(answer.id.toString())
-                            val borderColor = if (selected) AppIndigo else AppCardBorder
-                            val bgColor = if (selected) AppIndigo.copy(alpha = 0.06f) else Color.Transparent
-
-                            Surface(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    ExamAttemptStore.selectBackendAnswer(question.questionId, answer.id, question.type)
-                                },
-                                shape = MaterialTheme.shapes.medium,
-                                color = bgColor,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                                    .border(1.5.dp, borderColor, MaterialTheme.shapes.medium)
-                            ) {
-                                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    if (question.type == "MULTI") {
-                                        Checkbox(
-                                            selected,
-                                            {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                ExamAttemptStore.selectBackendAnswer(question.questionId, answer.id, question.type)
-                                            },
-                                            colors = CheckboxDefaults.colors(checkedColor = AppIndigo)
-                                        )
-                                    } else {
-                                        RadioButton(
-                                            selected,
-                                            {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                ExamAttemptStore.selectBackendAnswer(question.questionId, answer.id, question.type)
-                                            },
-                                            colors = RadioButtonDefaults.colors(selectedColor = AppIndigo)
-                                        )
-                                    }
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        "${'A' + answerIndex}. ${answer.content}",
-                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                        color = if (selected) AppIndigo else AppText
-                                    )
+                    Card(
+                        shape = MaterialTheme.shapes.large,
+                        colors = CardDefaults.cardColors(containerColor = AppSurface),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+                    ) {
+                        Column(Modifier.padding(18.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                val displayOrder = question.orderIndex?.takeIf { it > 0 } ?: (questionIndex + 1)
+                                ChipText("Câu $displayOrder / ${backendQuestions.size}", AppIndigo)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Save, null, tint = AppMint, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(savedStatusText(ExamAttemptStore.savedAt(question.questionId)), color = AppMint, style = MaterialTheme.typography.labelSmall)
                                 }
                             }
-                        }
-                    }
-                } else {
-                    val question = MockData.questions[questionIndex]
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        ChipText("Câu ${question.id} / ${MockData.questions.size}", AppIndigo)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Save, null, tint = AppMint, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(savedStatusText(ExamAttemptStore.savedAt(question.id)), color = AppMint, style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    Text(question.content, style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(16.dp))
+                            Spacer(Modifier.height(14.dp))
+                            Text(question.content, style = MaterialTheme.typography.titleLarge)
+                            Spacer(Modifier.height(16.dp))
 
-                    question.answers.forEach { answer ->
-                        val selected = ExamAttemptStore.selectedAnswerIds(question.id).contains(answer.id)
-                        val borderColor = if (selected) AppIndigo else AppCardBorder
-                        val bgColor = if (selected) AppIndigo.copy(alpha = 0.06f) else Color.Transparent
-
-                        Surface(
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                ExamAttemptStore.selectAnswer(question.id, answer.id, question.type)
-                            },
-                            shape = MaterialTheme.shapes.medium,
-                            color = bgColor,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .border(1.5.dp, borderColor, MaterialTheme.shapes.medium)
-                        ) {
-                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                if (question.type.name == "MULTI") {
-                                    Checkbox(
-                                        selected,
-                                        {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            ExamAttemptStore.selectAnswer(question.id, answer.id, question.type)
-                                        },
-                                        colors = CheckboxDefaults.colors(checkedColor = AppIndigo)
-                                    )
-                                } else {
-                                    RadioButton(
-                                        selected,
-                                        {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            ExamAttemptStore.selectAnswer(question.id, answer.id, question.type)
-                                        },
-                                        colors = RadioButtonDefaults.colors(selectedColor = AppIndigo)
-                                    )
-                                }
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    "${answer.id}. ${answer.text}",
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (selected) AppIndigo else AppText
+                            if (question.type == "FILL_BLANK") {
+                                OutlinedTextField(
+                                    value = ExamAttemptStore.fillAnswer(question.questionId),
+                                    onValueChange = { ExamAttemptStore.setFillAnswer(question.questionId, it) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Câu trả lời của bạn") },
+                                    shape = MaterialTheme.shapes.medium
                                 )
+                            } else {
+                                question.answers.orEmpty().forEachIndexed { answerIndex, answer ->
+                                    val selected = ExamAttemptStore.selectedAnswerIds(question.questionId).contains(answer.id.toString())
+                                    val borderColor = if (selected) AppIndigo else AppCardBorder
+                                    val bgColor = if (selected) AppIndigo.copy(alpha = 0.06f) else Color.Transparent
+
+                                    Surface(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            ExamAttemptStore.selectBackendAnswer(question.questionId, answer.id, question.type)
+                                        },
+                                        shape = MaterialTheme.shapes.medium,
+                                        color = bgColor,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp)
+                                            .border(1.5.dp, borderColor, MaterialTheme.shapes.medium)
+                                    ) {
+                                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            if (question.type == "MULTI") {
+                                                Checkbox(
+                                                    selected,
+                                                    {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                        ExamAttemptStore.selectBackendAnswer(question.questionId, answer.id, question.type)
+                                                    },
+                                                    colors = CheckboxDefaults.colors(checkedColor = AppIndigo)
+                                                )
+                                            } else {
+                                                RadioButton(
+                                                    selected,
+                                                    {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                        ExamAttemptStore.selectBackendAnswer(question.questionId, answer.id, question.type)
+                                                    },
+                                                    colors = RadioButtonDefaults.colors(selectedColor = AppIndigo)
+                                                )
+                                            }
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                "${'A' + answerIndex}. ${answer.content}",
+                                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                                color = if (selected) AppIndigo else AppText
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
-            }
-
-            }
-            }
 
             Spacer(Modifier.height(10.dp))
-            InfoBanner("If network is lost, answers are stored locally and sync later.", AppAmber, Icons.Default.WifiOff)
+            InfoBanner("Vui lòng giữ ứng dụng mở trong lúc thi. Đáp án chỉ được gửi khi bạn nộp bài.", AppAmber, Icons.Default.WifiOff)
+            }
+        }
 
-            SectionTitle("Quick Navigation")
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (useBackendQuestions) itemsIndexed(backendQuestions) { i, q ->
+        // #10: thanh chuyển nhanh được ghim cố định, luôn thấy mà không cần cuộn.
+        if (!isLoading && totalQuestions > 0) {
+            Spacer(Modifier.height(8.dp))
+            Text("Chuyển nhanh", style = MaterialTheme.typography.labelMedium, color = AppMuted)
+            Spacer(Modifier.height(6.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                itemsIndexed(backendQuestions) { i, q ->
                     val color = when {
                         i == safeIndex -> AppIndigo
                         ExamAttemptStore.isAnswered(q.questionId) -> AppMint
@@ -911,23 +978,6 @@ fun ExamTakingScreen(onSubmit: () -> Unit, onBack: () -> Unit) {
                         contentAlignment = Alignment.Center
                     ) {
                         Text((i + 1).toString(), color = if (isCurrent) Color.White else color, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-                } else itemsIndexed(MockData.questions) { i, q ->
-                    val color = when {
-                        i == safeIndex -> AppIndigo
-                        ExamAttemptStore.isAnswered(q.id) -> AppMint
-                        else -> AppMuted
-                    }
-                    val isCurrent = i == safeIndex
-                    Box(
-                        Modifier
-                            .size(42.dp)
-                            .background(if (isCurrent) color else color.copy(alpha = .10f), CircleShape)
-                            .then(if (!isCurrent) Modifier.border(1.dp, color.copy(alpha = 0.3f), CircleShape) else Modifier)
-                            .clickable { index = i },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(q.id.toString(), color = if (isCurrent) Color.White else color, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
             }
@@ -945,7 +995,7 @@ fun ExamTakingScreen(onSubmit: () -> Unit, onBack: () -> Unit) {
             ) {
                 Icon(Icons.Default.ArrowBack, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Previous")
+                Text("Câu trước")
             }
             Button(
                 onClick = { if (index < totalQuestions - 1) index++ },
@@ -956,14 +1006,31 @@ fun ExamTakingScreen(onSubmit: () -> Unit, onBack: () -> Unit) {
                 shape = MaterialTheme.shapes.medium,
                 colors = ButtonDefaults.buttonColors(containerColor = AppIndigo)
             ) {
-                Text("Next")
+                Text("Câu sau")
                 Spacer(Modifier.width(6.dp))
                 Icon(Icons.Default.ArrowForward, null, modifier = Modifier.size(18.dp))
             }
         }
 
-        PrimaryAction("Submit Exam", onClick = { if (totalQuestions > 0) onSubmit() })
+        PrimaryAction("Nộp bài", onClick = { if (totalQuestions > 0) onSubmit() })
         Spacer(Modifier.height(10.dp))
+    }
+
+    if (showExitConfirm) {
+        AlertDialog(
+            onDismissRequest = { showExitConfirm = false },
+            title = { Text("Thoát khỏi bài thi?") },
+            text = { Text("Bài thi vẫn đang tính giờ. Đáp án đã chọn được giữ lại, nhưng bạn cần quay lại nộp bài trước khi hết giờ.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showExitConfirm = false
+                    onBack()
+                }) { Text("Thoát") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitConfirm = false }) { Text("Tiếp tục làm bài") }
+            }
+        )
     }
 }
 
@@ -984,7 +1051,7 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
                     authorization,
                     ExamAttemptStore.backendExamId,
                     ExamSubmitRequest(
-                        note = "Submitted from Android app with ${ExamAttemptStore.answeredCount} answered questions.",
+                        note = "Nộp từ ứng dụng Android với ${ExamAttemptStore.answeredCount} câu đã trả lời.",
                         answers = ExamAttemptStore.backendSubmitAnswers()
                     )
                 )
@@ -1057,14 +1124,14 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
     if (showConfirm) {
         AlertDialog(
             onDismissRequest = { if (!loading) showConfirm = false },
-            title = { Text("Xac nhan nop bai") },
+            title = { Text("Xác nhận nộp bài") },
             text = {
                 val unanswered = ExamAttemptStore.unansweredCount
                 Text(
                     if (unanswered > 0) {
-                        "Ban con $unanswered cau chua tra loi. Xac nhan nop bai?"
+                        "Bạn còn $unanswered câu chưa trả lời. Xác nhận nộp bài?"
                     } else {
-                        "Ban da tra loi het. Xac nhan nop bai?"
+                        "Bạn đã trả lời hết. Xác nhận nộp bài?"
                     }
                 )
             },
@@ -1076,7 +1143,7 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
                     },
                     enabled = !loading
                 ) {
-                    Text("Nop bai")
+                    Text("Nộp bài")
                 }
             },
             dismissButton = {
@@ -1084,7 +1151,7 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
                     onClick = { showConfirm = false },
                     enabled = !loading
                 ) {
-                    Text("Xem lai")
+                    Text("Xem lại")
                 }
             }
         )
@@ -1093,30 +1160,36 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
 
 @Composable
 fun ResultScreen(onBack: () -> Unit) {
-    var backendResult by remember { mutableStateOf<ExamResultResponse?>(null) }
-    var backendMessage by remember { mutableStateOf<String?>(null) }
-    val examTitle = ExamAttemptStore.selectedExam.value?.title
+    var detail by remember { mutableStateOf<ExamResultDetailResponse?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    val fallbackTitle = ExamAttemptStore.selectedExam.value?.title
         ?: ExamAttemptStore.selectedExam.value?.code
-        ?: "Ket qua thi"
-    val summary = backendAttemptSummary()
+        ?: "Kết quả thi"
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(ExamAttemptStore.backendExamId) {
+        isLoading = true
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) {
-            backendMessage = "Please sign in again."
+            message = "Vui lòng đăng nhập lại."
+            isLoading = false
             return@LaunchedEffect
         }
         try {
-            val response = ApiClient.getResult(authorization, ExamAttemptStore.backendExamId)
-            backendResult = response.data
-            backendMessage = if (response.success) "Result loaded." else response.message
+            val response = ApiClient.getResultDetail(authorization, ExamAttemptStore.backendExamId)
+            detail = response.data
+            message = if (response.data != null) null else (response.message ?: "Chưa có kết quả.")
         } catch (exception: Exception) {
-            backendMessage = "Result is not available yet."
+            message = "Chưa có kết quả bài thi."
+        } finally {
+            isLoading = false
         }
     }
 
+    val examTitle = detail?.examTitle?.takeIf { it.isNotBlank() } ?: fallbackTitle
+
     AppBackground {
-        ExamTopBar("Results", onBack)
+        ExamTopBar("Kết quả", onBack)
         Card(shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
             Box(
                 Modifier
@@ -1129,81 +1202,83 @@ fun ResultScreen(onBack: () -> Unit) {
                         .padding(28.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(backendResult?.score ?: "--", color = Color.White, style = MaterialTheme.typography.displayLarge)
+                    Text(detail?.score ?: "--", color = Color.White, style = MaterialTheme.typography.displayLarge)
                     Text(examTitle, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(summary.correct.toString(), color = AppMint, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                            Text("Correct", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
-                        }
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(summary.wrong.toString(), color = AppCoral, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                            Text("Wrong", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
-                        }
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(summary.blank.toString(), color = AppAmber, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                            Text("Blank", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
-                        }
+                        ResultStat(detail?.correctCount, "Đúng", AppMint)
+                        ResultStat(detail?.wrongCount, "Sai", AppCoral)
+                        ResultStat(detail?.blankCount, "Bỏ trống", AppAmber)
                     }
                 }
             }
         }
 
-        Spacer(Modifier.height(12.dp))
-        if (backendMessage != null) {
-            InfoBanner(
-                backendMessage.orEmpty(),
-                if (backendResult != null) AppMint else AppAmber,
-                if (backendResult != null) Icons.Default.CloudDone else Icons.Default.Info
-            )
-        }
-
-        SectionTitle("Result Summary")
-        Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = AppSurface), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Exam: $examTitle", fontWeight = FontWeight.Bold)
-                Text("Score: ${backendResult?.score ?: "--"}", color = AppMuted)
-                Text("Status: ${backendResult?.status ?: "--"}", color = AppMuted)
-                Text("Submitted at: ${backendResult?.submittedAt ?: "--"}", color = AppMuted)
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Spacer(Modifier.height(12.dp))
+            if (isLoading) {
+                LoadingStateCard("Đang tải kết quả...")
+            } else if (message != null) {
+                InfoBanner(message.orEmpty(), AppAmber, Icons.Default.Info)
             }
-        }
 
-        SectionTitle("Answer Details")
-        if (ExamAttemptStore.backendQuestions.value.isEmpty()) {
-            InfoBanner("No answer details available.", AppAmber, Icons.Default.Info)
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                ExamAttemptStore.backendQuestions.value.forEach { question ->
-                    BackendResultQuestionCard(question)
+            SectionTitle("Tổng quan")
+            Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = AppSurface), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Đề thi: $examTitle", fontWeight = FontWeight.Bold)
+                    Text("Tổng số câu: ${detail?.totalQuestions ?: "--"}", color = AppMuted)
+                    Text("Trạng thái: ${detail?.status?.let { resultStatusLabel(it) } ?: "--"}", color = AppMuted)
+                    Text("Nộp lúc: ${resultDate(detail?.submittedAt)}", color = AppMuted)
                 }
             }
+
+            SectionTitle("Chi tiết đáp án")
+            val questions = detail?.questions.orEmpty()
+            if (questions.isEmpty()) {
+                if (!isLoading) InfoBanner("Chưa có chi tiết đáp án.", AppAmber, Icons.Default.Info)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    questions.forEach { question ->
+                        ResultQuestionCard(question)
+                    }
+                }
+            }
+            Spacer(Modifier.height(ScreenBottomPadding))
         }
     }
 }
 
 @Composable
-private fun BackendResultQuestionCard(question: ExamQuestionResponse) {
+private fun ResultStat(value: Int?, label: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text((value ?: 0).toString(), color = color, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        Text(label, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+private fun ResultQuestionCard(question: ResultQuestionResponse) {
     val answers = question.answers.orEmpty()
-    val selectedIds = ExamAttemptStore.selectedAnswerIds(question.questionId).mapNotNull { it.toLongOrNull() }.toSet()
-    val correctIds = answers.filter { it.correct == true }.map { it.id }.toSet()
-    val isBlank = if (question.type == "FILL_BLANK") {
-        ExamAttemptStore.fillAnswer(question.questionId).isBlank()
-    } else {
-        selectedIds.isEmpty()
-    }
-    val isCorrect = when (question.type) {
-        "FILL_BLANK" -> {
-            val userAnswer = ExamAttemptStore.fillAnswer(question.questionId).trim()
-            if (userAnswer.isBlank()) false else answers.any { it.correct == true && it.content.trim().equals(userAnswer, ignoreCase = true) }
-        }
-        else -> selectedIds == correctIds
-    }
+    val isBlank = question.blank == true
+    val isCorrect = question.correct == true
     val statusColor = when {
         isBlank -> AppMuted
         isCorrect -> AppMint
         else -> AppRed
     }
+    val selectedIds = question.selectedAnswerIds.orEmpty().toSet()
+    val yourAnswer = if (question.type == "FILL_BLANK") {
+        question.fillContent?.takeIf { it.isNotBlank() } ?: "Chưa trả lời"
+    } else {
+        val selected = answers.filter { it.id in selectedIds }.map { it.content }
+        if (selected.isEmpty()) "Chưa trả lời" else selected.joinToString()
+    }
+    val correctAnswer = answers.filter { it.correct == true }.map { it.content }
+        .let { if (it.isEmpty()) "--" else it.joinToString() }
 
     Card(
         shape = MaterialTheme.shapes.large,
@@ -1212,11 +1287,11 @@ private fun BackendResultQuestionCard(question: ExamQuestionResponse) {
             .fillMaxWidth()
             .border(1.dp, statusColor.copy(alpha = 0.3f), MaterialTheme.shapes.large)
     ) {
-        Row {
+        Row(Modifier.height(IntrinsicSize.Min)) {
             Box(
                 Modifier
                     .width(4.dp)
-                    .height(110.dp)
+                    .fillMaxHeight()
                     .background(statusColor)
             )
             Column(Modifier.padding(16.dp)) {
@@ -1226,196 +1301,23 @@ private fun BackendResultQuestionCard(question: ExamQuestionResponse) {
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f)
                     )
+                    Spacer(Modifier.width(8.dp))
                     ChipText(
                         when {
-                            isBlank -> "Blank"
-                            isCorrect -> "Correct"
-                            else -> "Wrong"
+                            isBlank -> "Bỏ trống"
+                            isCorrect -> "Đúng"
+                            else -> "Sai"
                         },
                         statusColor
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-                Text("Your answer: ${backendSelectedAnswerText(question)}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
-                Text("Correct: ${backendCorrectAnswerText(question)}", color = AppMint, style = MaterialTheme.typography.bodyMedium)
-                if (answers.any { !it.explanation.isNullOrBlank() }) {
+                Text("Bạn chọn: $yourAnswer", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                Text("Đáp án đúng: $correctAnswer", color = AppMint, style = MaterialTheme.typography.bodyMedium)
+                val explanation = answers.firstNotNullOfOrNull { it.explanation?.takeIf { exp -> exp.isNotBlank() } }
+                if (explanation != null) {
                     Spacer(Modifier.height(4.dp))
-                    Text(
-                        answers.firstNotNullOfOrNull { it.explanation } ?: "",
-                        color = AppMuted,
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
-            }
-        }
-    }
-}
-
-private fun backendSelectedAnswerText(question: ExamQuestionResponse): String {
-    return if (question.type == "FILL_BLANK") {
-        ExamAttemptStore.fillAnswer(question.questionId).takeIf { it.isNotBlank() } ?: "—"
-    } else {
-        val selectedIds = ExamAttemptStore.selectedAnswerIds(question.questionId).mapNotNull { it.toLongOrNull() }.toSet()
-        val selectedAnswers = question.answers.orEmpty().filter { it.id in selectedIds }.map { it.content }
-        if (selectedAnswers.isEmpty()) "—" else selectedAnswers.joinToString()
-    }
-}
-
-private fun backendCorrectAnswerText(question: ExamQuestionResponse): String {
-    val correctAnswers = question.answers.orEmpty().filter { it.correct == true }.map { it.content }
-    return if (correctAnswers.isEmpty()) "—" else correctAnswers.joinToString()
-}
-
-private fun backendAttemptSummary(): AttemptScore {
-    val questions = ExamAttemptStore.backendQuestions.value
-    if (questions.isEmpty()) {
-        return AttemptScore(0.0, 0, 0, 0)
-    }
-    var correct = 0
-    var blank = 0
-
-    questions.forEach { question ->
-        val selectedIds = ExamAttemptStore.selectedAnswerIds(question.questionId).mapNotNull { it.toLongOrNull() }.toSet()
-        val correctIds = question.answers.orEmpty().filter { it.correct == true }.map { it.id }.toSet()
-        when (question.type) {
-            "FILL_BLANK" -> {
-                val userAnswer = ExamAttemptStore.fillAnswer(question.questionId).trim()
-                if (userAnswer.isBlank()) {
-                    blank++
-                } else if (question.answers.orEmpty().any { it.correct == true && it.content.trim().equals(userAnswer, ignoreCase = true) }) {
-                    correct++
-                }
-            }
-            else -> {
-                if (selectedIds.isEmpty()) {
-                    blank++
-                } else if (selectedIds == correctIds) {
-                    correct++
-                }
-            }
-        }
-    }
-
-    val total = questions.size
-    val wrong = total - correct - blank
-    val score = if (total == 0) 0.0 else correct * 10.0 / total
-    return AttemptScore(score, correct, wrong, blank)
-}
-
-@Composable
-private fun ResultScreenLegacy(onBack: () -> Unit) {
-    val score = ExamAttemptStore.score()
-    var backendResult by remember { mutableStateOf<ExamResultResponse?>(null) }
-    var backendMessage by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        val authorization = SessionManager.authorizationHeader()
-        if (authorization != null) {
-            try {
-                val response = ApiClient.getResult(authorization, ExamAttemptStore.backendExamId)
-                backendResult = response.data
-                backendMessage = if (response.success) "Result loaded." else response.message
-            } catch (exception: Exception) { backendMessage = "Result details are not available yet." }
-        }
-    }
-
-    AppBackground {
-        ExamTopBar("Results", onBack)
-
-        // Score hero
-        Card(shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
-            Box(
-                Modifier
-                    .background(HeroGradient)
-                    .fillMaxWidth()
-            ) {
-                Column(
-                    Modifier
-                        .padding(28.dp)
-                        .fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("%.1f".format(score.score), color = Color.White, style = MaterialTheme.typography.displayLarge)
-                    Text("out of 10", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyLarge)
-                    Spacer(Modifier.height(14.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(score.correct.toString(), color = AppMint, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                            Text("Correct", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
-                        }
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(score.wrong.toString(), color = AppCoral, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                            Text("Wrong", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
-                        }
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(score.blank.toString(), color = AppAmber, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                            Text("Blank", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-            }
-        }
-
-        if (backendMessage != null) {
-            Spacer(Modifier.height(10.dp))
-            InfoBanner(
-                backendMessage.orEmpty(),
-                if (backendResult != null) AppMint else AppMuted,
-                if (backendResult != null) Icons.Default.CloudDone else Icons.Default.Info
-            )
-        }
-        if (backendResult != null) {
-            Text("Status: ${backendResult?.status} · submitted ${backendResult?.submittedAt ?: "--"}", color = AppMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp, start = 4.dp))
-        }
-
-        SectionTitle("Answer Details")
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
-            items(MockData.questions) { question ->
-                val userAnswers = ExamAttemptStore.selectedAnswerIds(question.id)
-                val correctAnswers = question.answers.filter { it.correct }.map { it.id }.toSet()
-                val isCorrect = userAnswers == correctAnswers
-                val isBlank = userAnswers.isEmpty()
-                val statusColor = when {
-                    isBlank -> AppMuted
-                    isCorrect -> AppMint
-                    else -> AppRed
-                }
-
-                Card(
-                    shape = MaterialTheme.shapes.large,
-                    colors = CardDefaults.cardColors(containerColor = AppSurface),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, statusColor.copy(alpha = 0.3f), MaterialTheme.shapes.large)
-                ) {
-                    Row {
-                        Box(
-                            Modifier
-                                .width(4.dp)
-                                .height(110.dp)
-                                .background(statusColor)
-                        )
-                        Column(Modifier.padding(16.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Q${question.id}: ${question.content}", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                                ChipText(
-                                    when {
-                                        isBlank -> "Blank"
-                                        isCorrect -> "Correct"
-                                        else -> "Wrong"
-                                    },
-                                    statusColor
-                                )
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Text("Your answer: ${userAnswers.ifEmpty { setOf("—") }.joinToString()}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
-                            Text("Correct: ${correctAnswers.joinToString()}", color = AppMint, style = MaterialTheme.typography.bodyMedium)
-                            if (question.explanation.isNotBlank()) {
-                                Spacer(Modifier.height(4.dp))
-                                Text(question.explanation, color = AppMuted, style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    }
+                    Text(explanation, color = AppMuted, style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

@@ -43,7 +43,9 @@ import com.internalexam.ui.profile.ProfileScreen
 import com.internalexam.ui.student.ExamLobbyScreen
 import com.internalexam.ui.student.ExamTakingScreen
 import com.internalexam.ui.student.ResultScreen
+import com.internalexam.ui.student.StudentExamsScreen
 import com.internalexam.ui.student.StudentHomeScreen
+import com.internalexam.ui.student.StudentResultsScreen
 import com.internalexam.ui.student.SubmitConfirmationScreen
 import com.internalexam.ui.teacher.AutoGenerateExamScreen
 import com.internalexam.ui.teacher.CreateExamScreen
@@ -66,10 +68,12 @@ object Routes {
     const val Login = "login"
     const val Profile = "profile"
     const val StudentHome = "student/home"
+    const val StudentExams = "student/exams"
     const val Lobby = "student/lobby"
     const val Taking = "student/taking"
     const val Submit = "student/submit"
     const val Result = "student/result"
+    const val Results = "student/results"
     const val TeacherDashboard = "teacher/dashboard"
     const val Questions = "teacher/questions"
     const val CreateQuestion = "teacher/questions/create"
@@ -89,9 +93,12 @@ object Routes {
 fun InternalExamApp() {
     val nav = rememberNavController()
     val current = nav.currentBackStackEntryAsState().value?.destination?.route.orEmpty()
+    val hideBottomBar = current == Routes.Taking || current == Routes.Submit
     Scaffold(
         bottomBar = {
-            RoleBottomBar(nav, current)
+            if (!hideBottomBar) {
+                RoleBottomBar(nav, current)
+            }
         }
     ) { innerPadding ->
         NavHost(
@@ -120,16 +127,48 @@ fun InternalExamApp() {
                         ExamAttemptStore.setBackendExamId(exam.id, exam)
                         nav.navigate(Routes.Lobby)
                     },
-                    onResult = { nav.navigate(Routes.Result) }
+                    onOpenResult = { exam ->
+                        ExamAttemptStore.setBackendExamId(exam.id, exam)
+                        nav.navigate(Routes.Result)
+                    },
+                    onSeeAllResults = { nav.navigate(Routes.Results) }
+                )
+            }
+            composable(Routes.StudentExams) {
+                StudentExamsScreen(
+                    onLobby = { exam ->
+                        ExamAttemptStore.setBackendExamId(exam.id, exam)
+                        nav.navigate(Routes.Lobby)
+                    },
+                    onBack = { nav.popBackStack() }
+                )
+            }
+            composable(Routes.Results) {
+                StudentResultsScreen(
+                    onOpenResult = { exam ->
+                        ExamAttemptStore.setBackendExamId(exam.id, exam)
+                        nav.navigate(Routes.Result)
+                    },
+                    onBack = { nav.popBackStack() }
                 )
             }
             composable(Routes.Lobby) {
                 ExamLobbyScreen(
-                    onStart = { ExamAttemptStore.reset(); nav.navigate(Routes.Taking) },
+                    onStart = { nav.navigate(Routes.Taking) },
                     onBack = { nav.popBackStack() }
                 )
             }
-            composable(Routes.Taking) { ExamTakingScreen({ nav.navigate(Routes.Submit) }, { nav.popBackStack() }) }
+            composable(Routes.Taking) {
+                ExamTakingScreen(
+                    onSubmit = { nav.navigate(Routes.Submit) },
+                    onBack = { nav.popBackStack() },
+                    onAutoSubmitted = {
+                        nav.navigate(Routes.Result) {
+                            popUpTo(Routes.Taking) { inclusive = true }
+                        }
+                    }
+                )
+            }
             composable(Routes.Submit) { SubmitConfirmationScreen({ nav.navigate(Routes.Result) }, { nav.popBackStack() }) }
             composable(Routes.Result) { ResultScreen { nav.popBackStack() } }
             composable(Routes.TeacherDashboard) { TeacherDashboardScreen({ nav.navigate(Routes.Questions) }, { nav.navigate(Routes.TeacherExams) }, { nav.navigate(Routes.GenerateExam) }, { nav.navigate(Routes.Monitor) }, { nav.navigate(Routes.Reports) }) }
@@ -194,8 +233,8 @@ private fun RoleBottomBar(nav: NavHostController, current: String) {
     val items = when (activeRole) {
         Role.STUDENT -> listOf(
             NavItem("Home", Routes.StudentHome, Icons.Default.Home),
-            NavItem("Exams", Routes.Lobby, Icons.Default.Quiz),
-            NavItem("Results", Routes.Result, Icons.Default.Assessment),
+            NavItem("Exams", Routes.StudentExams, Icons.Default.Quiz),
+            NavItem("Results", Routes.Results, Icons.Default.Assessment),
             NavItem("Profile", Routes.Profile, Icons.Default.Person)
         )
         Role.TEACHER -> listOf(

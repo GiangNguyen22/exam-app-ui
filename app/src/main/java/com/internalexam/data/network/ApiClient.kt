@@ -75,6 +75,11 @@ object ApiClient {
         return callBackend { it.getResult(authorization, examId) }
     }
 
+    suspend fun getResultDetail(authorization: String, examId: Long): ApiResponse<ExamResultDetailResponse> {
+        return callBackend { it.getResultDetail(authorization, examId) }
+    }
+
+
     suspend fun getExamReport(authorization: String, examId: Long): ApiResponse<ExamReportResponse> {
         return callBackend { it.getExamReport(authorization, examId) }
     }

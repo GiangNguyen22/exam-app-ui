@@ -80,6 +80,12 @@ interface AuthApi {
         @Path("examId") examId: Long
     ): ApiResponse<ExamResultResponse>
 
+    @GET("api/results/{examId}/detail")
+    suspend fun getResultDetail(
+        @Header("Authorization") authorization: String,
+        @Path("examId") examId: Long
+    ): ApiResponse<ExamResultDetailResponse>
+
     @GET("api/results/exams/{examId}/report")
     suspend fun getExamReport(
         @Header("Authorization") authorization: String,

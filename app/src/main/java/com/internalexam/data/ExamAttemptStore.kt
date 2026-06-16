@@ -9,9 +9,9 @@ import com.internalexam.model.mock.MockData
 import com.internalexam.model.mock.QuestionType
 
 object ExamAttemptStore {
-    private val selectedAnswers = mutableStateMapOf<Int, Set<String>>()
-    private val fillAnswers = mutableStateMapOf<Int, String>()
-    private val answerSavedAt = mutableStateMapOf<Int, Long>()
+    private val selectedAnswers = mutableStateMapOf<Long, Set<String>>()
+    private val fillAnswers = mutableStateMapOf<Long, String>()
+    private val answerSavedAt = mutableStateMapOf<Long, Long>()
     var backendQuestions = mutableStateOf<List<ExamQuestionResponse>>(emptyList())
         private set
     var backendExamId: Long = 1L
@@ -21,10 +21,25 @@ object ExamAttemptStore {
     var selectedQuestion = mutableStateOf<ExamQuestionResponse?>(null)
         private set
 
+    /** Thời điểm kết thúc bài thi (epoch millis). Được neo cố định khi vào màn làm bài
+     *  để đồng hồ không bị reset khi điều hướng qua lại. */
+    var attemptEndAtMillis: Long? = null
+        private set
+
     fun setBackendExamId(examId: Long, exam: ExamResponse? = null) {
         backendExamId = examId
         selectedExam.value = exam
         backendQuestions.value = emptyList()
+        // Chọn đề khác -> bỏ đáp án và đồng hồ của lần làm trước để tránh lẫn dữ liệu.
+        reset()
+    }
+
+    /** Đặt mốc hết giờ một lần cho mỗi lần làm bài; gọi lại sẽ không làm mới mốc. */
+    fun ensureAttemptDeadline(durationMinutes: Int) {
+        if (attemptEndAtMillis == null) {
+            attemptEndAtMillis = System.currentTimeMillis() +
+                durationMinutes.coerceAtLeast(1) * 60_000L
+        }
     }
 
     fun setBackendQuestions(questions: List<ExamQuestionResponse>) {
@@ -59,11 +74,11 @@ object ExamAttemptStore {
         get() = if (usingBackendQuestions()) backendQuestions.value.size else MockData.questions.size
 
     fun selectedAnswerIds(questionId: Int): Set<String> {
-        return selectedAnswers[questionId].orEmpty()
+        return selectedAnswers[questionId.toLong()].orEmpty()
     }
 
     fun selectedAnswerIds(questionId: Long): Set<String> {
-        return selectedAnswers[questionId.toInt()].orEmpty()
+        return selectedAnswers[questionId].orEmpty()
     }
 
     fun isAnswered(questionId: Int): Boolean {
@@ -80,17 +95,18 @@ object ExamAttemptStore {
     }
 
     fun selectAnswer(questionId: Int, answerId: String, questionType: QuestionType) {
+        val key = questionId.toLong()
         val current = selectedAnswerIds(questionId)
-        selectedAnswers[questionId] = if (questionType == QuestionType.MULTI) {
+        selectedAnswers[key] = if (questionType == QuestionType.MULTI) {
             if (current.contains(answerId)) current - answerId else current + answerId
         } else {
             setOf(answerId)
         }
-        answerSavedAt[questionId] = System.currentTimeMillis()
+        answerSavedAt[key] = System.currentTimeMillis()
     }
 
     fun selectBackendAnswer(questionId: Long, answerId: Long, type: String?) {
-        val key = questionId.toInt()
+        val key = questionId
         val current = selectedAnswerIds(questionId)
         selectedAnswers[key] = if (type == QuestionType.MULTI.name) {
             if (current.contains(answerId.toString())) current - answerId.toString() else current + answerId.toString()
@@ -101,21 +117,20 @@ object ExamAttemptStore {
     }
 
     fun fillAnswer(questionId: Long): String {
-        return fillAnswers[questionId.toInt()].orEmpty()
+        return fillAnswers[questionId].orEmpty()
     }
 
     fun setFillAnswer(questionId: Long, value: String) {
-        val key = questionId.toInt()
-        fillAnswers[key] = value
-        answerSavedAt[key] = System.currentTimeMillis()
+        fillAnswers[questionId] = value
+        answerSavedAt[questionId] = System.currentTimeMillis()
     }
 
     fun savedAt(questionId: Int): Long? {
-        return answerSavedAt[questionId]
+        return answerSavedAt[questionId.toLong()]
     }
 
     fun savedAt(questionId: Long): Long? {
-        return answerSavedAt[questionId.toInt()]
+        return answerSavedAt[questionId]
     }
 
     fun backendSubmitAnswers(): List<ExamAnswerSubmitRequest> {
@@ -132,6 +147,7 @@ object ExamAttemptStore {
         selectedAnswers.clear()
         fillAnswers.clear()
         answerSavedAt.clear()
+        attemptEndAtMillis = null
     }
 
     fun score(): AttemptScore {
