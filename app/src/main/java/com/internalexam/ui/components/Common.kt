@@ -49,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -218,10 +219,10 @@ fun MetricCard(
 @Composable
 fun StatusPill(state: NetworkState) {
     val (text, color, icon) = when (state) {
-        NetworkState.ONLINE -> Triple("Online", AppMint, Icons.Default.Wifi)
-        NetworkState.OFFLINE -> Triple("Offline", AppRed, Icons.Default.CloudOff)
-        NetworkState.SYNCING -> Triple("Syncing", AppAmber, Icons.Default.Sync)
-        NetworkState.SYNCED -> Triple("Synced", AppMint, Icons.Default.CloudDone)
+        NetworkState.ONLINE -> Triple("Trực tuyến", AppMint, Icons.Default.Wifi)
+        NetworkState.OFFLINE -> Triple("Mất kết nối", AppRed, Icons.Default.CloudOff)
+        NetworkState.SYNCING -> Triple("Đang tải", AppAmber, Icons.Default.Sync)
+        NetworkState.SYNCED -> Triple("Sẵn sàng", AppMint, Icons.Default.CloudDone)
     }
     val alpha = if (state == NetworkState.SYNCING) {
         val transition = rememberInfiniteTransition(label = "pulse")
@@ -248,21 +249,41 @@ fun StatusPill(state: NetworkState) {
 
 /* ── Primary action button with gradient ── */
 @Composable
-fun PrimaryAction(text: String, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
+fun PrimaryAction(
+    text: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onClick: () -> Unit = {}
+) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
             .height(54.dp)
-            .shadow(6.dp, MaterialTheme.shapes.medium, spotColor = AppIndigo.copy(alpha = 0.3f)),
+            .then(
+                if (enabled) {
+                    Modifier.shadow(6.dp, MaterialTheme.shapes.medium, spotColor = AppIndigo.copy(alpha = 0.3f))
+                } else {
+                    Modifier
+                }
+            ),
         shape = MaterialTheme.shapes.medium,
-        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color.White),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color.Transparent,
+            contentColor = Color.White,
+            disabledContainerColor = Color.Transparent,
+            disabledContentColor = Color.White.copy(alpha = 0.72f)
+        ),
         contentPadding = PaddingValues()
     ) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(ButtonGradient, MaterialTheme.shapes.medium),
+                .background(
+                    if (enabled) ButtonGradient else Brush.horizontalGradient(listOf(AppMuted, AppMuted)),
+                    MaterialTheme.shapes.medium
+                ),
             contentAlignment = Alignment.Center
         ) {
             Text(text, fontWeight = FontWeight.Bold, fontSize = 15.sp)

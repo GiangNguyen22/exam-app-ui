@@ -680,18 +680,18 @@ private fun savedStatusText(savedAt: Long?): String {
 fun ExamLobbyScreen(onStart: () -> Unit, onBack: () -> Unit) {
     val exam = ExamAttemptStore.selectedExam.value
     AppBackground {
-        ExamTopBar("Exam Room", onBack)
+        ExamTopBar("Phòng thi", onBack)
         GradientHero(
-            exam?.title ?: "No exam selected",
-            exam?.let { "Code ${it.code}" } ?: "Go back and select an exam."
+            exam?.title ?: "Chưa chọn đề thi",
+            exam?.let { "Mã đề ${it.code}" } ?: "Vui lòng quay lại danh sách phòng thi để chọn đề."
         ) { StatusPill(NetworkState.SYNCED) }
 
         SectionTitle("Trạng thái đề thi")
         MetricCard(
-            "Exam package",
-            if (exam != null) "Ready" else "Not ready",
-            "Ready to start",
-            AppMint,
+            "Gói đề thi",
+            if (exam != null) "Sẵn sàng" else "Chưa sẵn sàng",
+            if (exam != null) "Có thể bắt đầu làm bài" else "Chưa có đề để bắt đầu",
+            if (exam != null) AppMint else AppAmber,
             Icons.Default.CloudDone
         )
 
@@ -704,20 +704,20 @@ fun ExamLobbyScreen(onStart: () -> Unit, onBack: () -> Unit) {
                 .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
         ) {
             Column(Modifier.padding(16.dp)) {
-                RuleItem("Questions will be available when you start the exam", Icons.Default.Info, AppIndigo)
+                RuleItem("Câu hỏi sẽ hiển thị sau khi bắt đầu làm bài", Icons.Default.Info, AppIndigo)
                 Surface(
                     color = AppRed.copy(alpha = 0.05f),
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    RuleItem("Do not leave the app during the exam", Icons.Default.Warning, AppRed)
+                    RuleItem("Không rời ứng dụng trong lúc làm bài", Icons.Default.Warning, AppRed)
                 }
-                RuleItem("Single device sign-in only", Icons.Default.PhoneAndroid, AppAmber)
+                RuleItem("Chỉ đăng nhập và làm bài trên một thiết bị", Icons.Default.PhoneAndroid, AppAmber)
             }
         }
 
         Spacer(Modifier.weight(1f))
-        PrimaryAction("Start Exam", onClick = onStart)
+        PrimaryAction("Bắt đầu làm bài", enabled = exam != null, onClick = onStart)
         Spacer(Modifier.height(ScreenBottomPadding))
     }
 }
@@ -758,6 +758,7 @@ fun ExamTakingScreen(
                     answers = ExamAttemptStore.backendSubmitAnswers()
                 )
             )
+            ExamAttemptStore.reset()
             onAutoSubmitted()
         } catch (exception: Exception) {
             loadMessage = "Hết giờ. Vui lòng xác nhận nộp bài."
@@ -842,7 +843,7 @@ fun ExamTakingScreen(
                     )
                 }
             }
-            StatusPill(NetworkState.SYNCING)
+            StatusPill(NetworkState.SYNCED)
         }
 
         Spacer(Modifier.height(10.dp))
@@ -1043,7 +1044,7 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
 
     fun submit() {
         val authorization = SessionManager.authorizationHeader()
-        if (authorization == null) { message = "Please sign in again."; return }
+        if (authorization == null) { message = "Vui lòng đăng nhập lại."; return }
         scope.launch {
             loading = true; message = null
             try {
@@ -1055,21 +1056,22 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
                         answers = ExamAttemptStore.backendSubmitAnswers()
                     )
                 )
+                ExamAttemptStore.reset()
                 onConfirm()
             } catch (exception: HttpException) {
                 message = when (exception.code()) {
-                    404 -> "This exam was not found."
-                    401, 403 -> "You do not have permission to submit this exam."
-                    else -> "Cannot submit exam right now."
+                    404 -> "Không tìm thấy đề thi này."
+                    401, 403 -> "Bạn không có quyền nộp bài thi này."
+                    else -> "Chưa thể nộp bài lúc này."
                 }
             } catch (exception: Exception) {
-                message = "Cannot submit exam right now."
+                message = "Chưa thể nộp bài lúc này."
             } finally { loading = false }
         }
     }
 
     AppBackground {
-        ExamTopBar("Confirm Submission", onBack)
+        ExamTopBar("Xác nhận nộp bài", onBack)
 
         Card(shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
             Box(
@@ -1083,12 +1085,12 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
                         .padding(22.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("Submission Summary", color = Color.White, style = MaterialTheme.typography.titleLarge)
+                    Text("Tóm tắt bài làm", color = Color.White, style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(ExamAttemptStore.answeredCount.toString(), color = Color.White, style = MaterialTheme.typography.headlineLarge)
-                            Text("Answered", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium)
+                            Text("Đã trả lời", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium)
                         }
                         Box(
                             Modifier
@@ -1098,7 +1100,7 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
                         )
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(ExamAttemptStore.unansweredCount.toString(), color = AppAmber, style = MaterialTheme.typography.headlineLarge)
-                            Text("Unanswered", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium)
+                            Text("Chưa trả lời", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
@@ -1106,18 +1108,22 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(14.dp))
-        InfoBanner("After submission, answers cannot be changed. The system will sync when internet is available.", AppAmber, Icons.Default.Warning)
+        InfoBanner("Sau khi nộp bài, bạn không thể chỉnh sửa đáp án. Hãy kiểm tra lại trước khi xác nhận.", AppAmber, Icons.Default.Warning)
         if (message != null) {
             Spacer(Modifier.height(10.dp))
             InfoBanner(message.orEmpty(), AppRed, Icons.Default.ErrorOutline)
         }
 
         Spacer(Modifier.weight(1f))
-        PrimaryAction(if (loading) "Submitting..." else "Submit Exam", onClick = { if (!loading) showConfirm = true })
+        PrimaryAction(
+            if (loading) "Đang nộp bài..." else "Nộp bài",
+            enabled = !loading,
+            onClick = { showConfirm = true }
+        )
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = onBack, modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp), shape = MaterialTheme.shapes.medium, enabled = !loading) { Text("Back to Exam") }
+            .height(48.dp), shape = MaterialTheme.shapes.medium, enabled = !loading) { Text("Quay lại bài làm") }
         Spacer(Modifier.height(ScreenBottomPadding))
     }
 

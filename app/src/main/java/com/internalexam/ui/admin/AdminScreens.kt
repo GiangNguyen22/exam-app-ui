@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.ChevronRight
@@ -24,28 +26,45 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.internalexam.model.mock.MockData
+import com.internalexam.data.SessionManager
+import com.internalexam.data.network.ApiClient
+import com.internalexam.data.network.AuditLogResponse
+import com.internalexam.data.network.UserCreateRequest
+import com.internalexam.data.network.UserProfileResponse
+import com.internalexam.data.network.UserRolesRequest
 import com.internalexam.model.mock.NetworkState
 import com.internalexam.model.mock.Role
-import com.internalexam.model.mock.UserStatus
 import com.internalexam.ui.components.AppBackground
 import com.internalexam.ui.components.AvatarCircle
 import com.internalexam.ui.components.ChipText
 import com.internalexam.ui.components.ExamTopBar
 import com.internalexam.ui.components.GradientHero
+import com.internalexam.ui.components.InfoBanner
+import com.internalexam.ui.components.LoadingStateCard
 import com.internalexam.ui.components.MetricCard
 import com.internalexam.ui.components.SectionTitle
 import com.internalexam.ui.components.StatusPill
@@ -58,34 +77,62 @@ import com.internalexam.ui.theme.AppMuted
 import com.internalexam.ui.theme.AppRed
 import com.internalexam.ui.theme.AppSurface
 import com.internalexam.ui.theme.AppViolet
+import kotlinx.coroutines.launch
 
 @Composable
-fun AdminDashboardScreen(openUsers: () -> Unit) {
+fun AdminDashboardScreen(
+    openUsers: () -> Unit,
+    openAuditLogs: () -> Unit
+) {
+    var message by remember { mutableStateOf<String?>(null) }
+    var userCount by remember { mutableStateOf<Int?>(null) }
+    var auditLogCount by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(Unit) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Vui lòng đăng nhập lại."
+            return@LaunchedEffect
+        }
+        runCatching { ApiClient.getUsers(authorization).data.orEmpty().size }
+            .onSuccess { userCount = it }
+            .onFailure { message = "Không tải được số liệu tài khoản từ backend." }
+        runCatching { ApiClient.getAuditLogs(authorization).data.orEmpty().size }
+            .onSuccess { auditLogCount = it }
+    }
+
     AppBackground {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
         Spacer(Modifier.height(18.dp))
-        GradientHero("Admin Dashboard", "Accounts, roles, permissions & audit") {
+        GradientHero("Quản trị hệ thống", "Tài khoản, vai trò, phân quyền và nhật ký") {
             StatusPill(NetworkState.SYNCED)
         }
 
-        SectionTitle("System Overview")
-        MetricCard("Users", MockData.users.size.toString(), "Admin, Teacher, Student", AppBlue, Icons.Default.Groups)
-        Spacer(Modifier.height(10.dp))
-        MetricCard("Roles", "3 roles", "Access control", AppViolet, Icons.Default.Security)
-        Spacer(Modifier.height(10.dp))
-        MetricCard("Audit Logs", MockData.auditLogs.size.toString(), "Security events", AppAmber, Icons.Default.History)
+        if (message != null) {
+            Spacer(Modifier.height(12.dp))
+            InfoBanner(message.orEmpty(), AppAmber, Icons.Default.Settings)
+        }
 
-        SectionTitle("Administration")
+        SectionTitle("Tổng quan hệ thống")
+        MetricCard("Tài khoản", userCount?.toString() ?: "--", "Admin, giáo viên, học sinh", AppBlue, Icons.Default.Groups)
+        Spacer(Modifier.height(10.dp))
+        MetricCard("Vai trò", "3 vai trò", "Kiểm soát truy cập", AppViolet, Icons.Default.Security)
+        Spacer(Modifier.height(10.dp))
+        MetricCard("Nhật ký", auditLogCount?.toString() ?: "--", "Sự kiện bảo mật", AppAmber, Icons.Default.History)
+
+        SectionTitle("Chức năng quản trị")
         val adminActions = listOf(
-            Triple("Manage Accounts", Icons.Default.Groups, openUsers),
-            Triple("Assign Roles", Icons.Default.Badge, {}),
-            Triple("Permissions", Icons.Default.Security, {}),
-            Triple("Audit Logs", Icons.Default.History, {}),
-            Triple("Settings", Icons.Default.Settings, {}),
+            AdminAction("Quản lý tài khoản", Icons.Default.Groups, openUsers),
+            AdminAction("Nhật ký audit", Icons.Default.History, openAuditLogs)
         )
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            adminActions.forEach { (label, icon, action) ->
+            adminActions.forEach { actionItem ->
                 Card(
-                    onClick = action,
+                    onClick = actionItem.onClick,
                     shape = MaterialTheme.shapes.large,
                     colors = CardDefaults.cardColors(containerColor = AppSurface),
                     modifier = Modifier
@@ -99,35 +146,195 @@ fun AdminDashboardScreen(openUsers: () -> Unit) {
                                 .background(AppIndigo.copy(alpha = 0.1f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(icon, null, tint = AppIndigo, modifier = Modifier.size(20.dp))
+                            Icon(actionItem.icon, null, tint = AppIndigo, modifier = Modifier.size(20.dp))
                         }
                         Spacer(Modifier.width(14.dp))
-                        Text(label, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                        Text(actionItem.label, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                         Icon(Icons.Default.ChevronRight, null, tint = AppMuted)
                     }
                 }
             }
         }
         Spacer(Modifier.height(24.dp))
+        }
     }
 }
 
 @Composable
 fun UserManagementScreen(onBack: () -> Unit) {
+    var users by remember { mutableStateOf<List<UserProfileResponse>>(emptyList()) }
+    var selectedRole by remember { mutableStateOf<Role?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    var changingUserId by remember { mutableStateOf<Long?>(null) }
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var roleTarget by remember { mutableStateOf<UserProfileResponse?>(null) }
+    var dialogSaving by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val visibleUsers = users.filter { user -> selectedRole == null || user.primaryRole() == selectedRole }
+
+    fun loadUsers() {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Vui lòng đăng nhập lại."
+            isLoading = false
+            return
+        }
+        scope.launch {
+            isLoading = true
+            message = null
+            try {
+                val response = ApiClient.getUsers(authorization)
+                if (response.success) {
+                    users = response.data.orEmpty()
+                } else {
+                    message = response.message.ifBlank { "Không tải được danh sách tài khoản." }
+                }
+            } catch (exception: Exception) {
+                message = "Không kết nối được backend quản lý tài khoản."
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    fun toggleUserLock(user: UserProfileResponse) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Vui lòng đăng nhập lại."
+            return
+        }
+        scope.launch {
+            changingUserId = user.id
+            message = null
+            try {
+                val response = if (user.status == "LOCKED") {
+                    ApiClient.unlockUser(authorization, user.id)
+                } else {
+                    ApiClient.lockUser(authorization, user.id)
+                }
+                val updatedUser = response.data
+                if (response.success && updatedUser != null) {
+                    users = users.map { item -> if (item.id == updatedUser.id) updatedUser else item }
+                    message = if (updatedUser.status == "LOCKED") {
+                        "Đã khóa tài khoản ${updatedUser.displayName()}."
+                    } else {
+                        "Đã mở khóa tài khoản ${updatedUser.displayName()}."
+                    }
+                } else {
+                    message = response.message.ifBlank { "Không cập nhật được trạng thái tài khoản." }
+                }
+            } catch (exception: Exception) {
+                message = "Không cập nhật được trạng thái tài khoản."
+            } finally {
+                changingUserId = null
+            }
+        }
+    }
+
+    fun createUser(request: UserCreateRequest, onDone: () -> Unit) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Vui lòng đăng nhập lại."
+            return
+        }
+        scope.launch {
+            dialogSaving = true
+            message = null
+            try {
+                val response = ApiClient.createUser(authorization, request)
+                val createdUser = response.data
+                if (response.success && createdUser != null) {
+                    users = (users + createdUser).sortedBy { it.id }
+                    message = "Đã tạo tài khoản ${createdUser.displayName()}."
+                    onDone()
+                } else {
+                    message = response.message.ifBlank { "Không tạo được tài khoản." }
+                }
+            } catch (exception: Exception) {
+                message = "Không tạo được tài khoản."
+            } finally {
+                dialogSaving = false
+            }
+        }
+    }
+
+    fun updateRoles(user: UserProfileResponse, roles: List<String>, onDone: () -> Unit) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Vui lòng đăng nhập lại."
+            return
+        }
+        scope.launch {
+            dialogSaving = true
+            message = null
+            try {
+                val response = ApiClient.updateUserRoles(authorization, user.id, UserRolesRequest(roles))
+                val updatedUser = response.data
+                if (response.success && updatedUser != null) {
+                    users = users.map { item -> if (item.id == updatedUser.id) updatedUser else item }
+                    message = "Đã cập nhật vai trò cho ${updatedUser.displayName()}."
+                    onDone()
+                } else {
+                    message = response.message.ifBlank { "Không cập nhật được vai trò." }
+                }
+            } catch (exception: Exception) {
+                message = "Không cập nhật được vai trò."
+            } finally {
+                dialogSaving = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        loadUsers()
+    }
+
     AppBackground {
-        ExamTopBar("User Management", onBack)
+        ExamTopBar("Quản lý tài khoản", onBack)
+
+        if (message != null) {
+            InfoBanner(message.orEmpty(), AppAmber, Icons.Default.Settings)
+            Spacer(Modifier.height(10.dp))
+        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
+            OutlinedButton(
+                onClick = { selectedRole = null },
+                shape = MaterialTheme.shapes.medium,
+                contentPadding = PaddingValues(horizontal = 14.dp),
+                modifier = Modifier.height(36.dp)
+            ) {
+                Text("Tất cả", style = MaterialTheme.typography.labelMedium)
+            }
             Role.entries.forEach { role ->
                 val color = when (role) { Role.ADMIN -> AppRed; Role.TEACHER -> AppViolet; Role.STUDENT -> AppBlue }
-                ChipText(role.name, color)
+                Button(
+                    onClick = { selectedRole = role },
+                    shape = MaterialTheme.shapes.medium,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (selectedRole == role) color else color.copy(alpha = 0.12f),
+                        contentColor = if (selectedRole == role) AppSurface else color
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Text(role.label(), style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 96.dp)) {
-            items(MockData.users) { user ->
-                val statusColor = when (user.status) { UserStatus.ACTIVE -> AppMint; UserStatus.LOCKED -> AppRed; UserStatus.PENDING -> AppAmber }
-                val roleColor = when (user.role) { Role.ADMIN -> AppRed; Role.TEACHER -> AppViolet; Role.STUDENT -> AppBlue }
+            if (isLoading) {
+                item { LoadingStateCard("Đang tải danh sách tài khoản...") }
+            } else if (visibleUsers.isEmpty()) {
+                item { InfoBanner("Không có tài khoản phù hợp bộ lọc.", AppAmber, Icons.Default.Groups) }
+            }
+
+            items(visibleUsers, key = { it.id }) { user ->
+                val statusColor = when (user.status) { "ACTIVE" -> AppMint; "LOCKED" -> AppRed; "PENDING" -> AppAmber; else -> AppMuted }
+                val role = user.primaryRole()
+                val roleColor = when (role) { Role.ADMIN -> AppRed; Role.TEACHER -> AppViolet; Role.STUDENT -> AppBlue; null -> AppMuted }
 
                 Card(
                     shape = MaterialTheme.shapes.large,
@@ -138,21 +345,32 @@ fun UserManagementScreen(onBack: () -> Unit) {
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            AvatarCircle(user.name, 42, roleColor)
+                            AvatarCircle(user.displayName(), 42, roleColor)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(user.name, fontWeight = FontWeight.Bold)
-                                Text("${user.code} · ${user.role}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                                Text(user.displayName(), fontWeight = FontWeight.Bold)
+                                Text("${user.identityCode()} · ${role?.label() ?: "Chưa gán vai trò"}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
                             }
-                            ChipText(user.status.name, statusColor)
+                            ChipText(user.statusLabel(), statusColor)
                         }
                         Spacer(Modifier.height(10.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = {}, shape = MaterialTheme.shapes.medium, modifier = Modifier.height(36.dp), contentPadding = PaddingValues(horizontal = 14.dp)) {
-                                Text(if (user.status == UserStatus.LOCKED) "Unlock" else "Lock", style = MaterialTheme.typography.labelMedium)
+                            OutlinedButton(
+                                onClick = { toggleUserLock(user) },
+                                shape = MaterialTheme.shapes.medium,
+                                modifier = Modifier.height(36.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp),
+                                enabled = changingUserId != user.id
+                            ) {
+                                Text(if (user.status == "LOCKED") "Mở khóa" else "Khóa", style = MaterialTheme.typography.labelMedium)
                             }
-                            OutlinedButton(onClick = {}, shape = MaterialTheme.shapes.medium, modifier = Modifier.height(36.dp), contentPadding = PaddingValues(horizontal = 14.dp)) {
-                                Text("Assign Role", style = MaterialTheme.typography.labelMedium)
+                            OutlinedButton(
+                                onClick = { roleTarget = user },
+                                shape = MaterialTheme.shapes.medium,
+                                modifier = Modifier.height(36.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp)
+                            ) {
+                                Text("Gán vai trò", style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
@@ -161,7 +379,7 @@ fun UserManagementScreen(onBack: () -> Unit) {
         }
 
         Button(
-            onClick = {},
+            onClick = { showCreateDialog = true },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
@@ -170,7 +388,367 @@ fun UserManagementScreen(onBack: () -> Unit) {
         ) {
             Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Create User", fontWeight = FontWeight.Bold)
+            Text("Tạo tài khoản", fontWeight = FontWeight.Bold)
         }
     }
+
+    if (showCreateDialog) {
+        CreateUserDialog(
+            saving = dialogSaving,
+            onDismiss = { if (!dialogSaving) showCreateDialog = false },
+            onSubmit = { request ->
+                createUser(request) { showCreateDialog = false }
+            }
+        )
+    }
+
+    roleTarget?.let { user ->
+        AssignRolesDialog(
+            user = user,
+            saving = dialogSaving,
+            onDismiss = { if (!dialogSaving) roleTarget = null },
+            onSubmit = { roles ->
+                updateRoles(user, roles) { roleTarget = null }
+            }
+        )
+    }
+}
+
+@Composable
+fun AdminAuditLogScreen(onBack: () -> Unit) {
+    var logs by remember { mutableStateOf<List<AuditLogResponse>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var message by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Vui lòng đăng nhập lại."
+            isLoading = false
+            return@LaunchedEffect
+        }
+        try {
+            val response = ApiClient.getAuditLogs(authorization)
+            if (response.success) {
+                logs = response.data.orEmpty()
+                message = null
+            } else {
+                message = response.message.ifBlank { "Không tải được nhật ký audit." }
+            }
+        } catch (exception: Exception) {
+            message = "Không kết nối được backend nhật ký audit."
+        } finally {
+            isLoading = false
+        }
+    }
+
+    AppBackground {
+        ExamTopBar("Nhật ký audit", onBack)
+
+        if (message != null) {
+            InfoBanner(message.orEmpty(), AppAmber, Icons.Default.History)
+            Spacer(Modifier.height(10.dp))
+        }
+
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 96.dp)) {
+            if (isLoading) {
+                item { LoadingStateCard("Đang tải nhật ký audit...") }
+            } else if (logs.isEmpty()) {
+                item { InfoBanner("Chưa có nhật ký audit.", AppAmber, Icons.Default.History) }
+            }
+
+            items(logs, key = { it.id }) { log ->
+                AuditLogCard(log)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuditLogCard(log: AuditLogResponse) {
+    val resultColor = when (log.result) {
+        "allow" -> AppMint
+        "deny" -> AppRed
+        "error" -> AppAmber
+        else -> AppMuted
+    }
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = AppSurface),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(log.action, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
+                ChipText(log.result ?: "--", resultColor)
+            }
+            Text("Người dùng: ${log.username ?: "Hệ thống"}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+            val resource = listOfNotNull(log.resourceType, log.resourceId?.toString()).joinToString(" #")
+            if (resource.isNotBlank()) {
+                Text("Tài nguyên: $resource", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+            }
+            log.reason?.takeIf { it.isNotBlank() }?.let { reason ->
+                Text(reason, color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+            }
+            Text(formatAuditTime(log.createdAt), color = AppMuted, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+private data class AdminAction(
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val onClick: () -> Unit
+)
+
+@Composable
+private fun CreateUserDialog(
+    saving: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (UserCreateRequest) -> Unit
+) {
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var fullName by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var studentId by remember { mutableStateOf("") }
+    var employeeCode by remember { mutableStateOf("") }
+    var roles by remember { mutableStateOf(setOf(Role.STUDENT)) }
+    var localError by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Tạo tài khoản") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                localError?.let { InfoBanner(it, AppRed, Icons.Default.Settings) }
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it; localError = null },
+                    label = { Text("Tên đăng nhập") },
+                    singleLine = true,
+                    enabled = !saving,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; localError = null },
+                    label = { Text("Mật khẩu") },
+                    singleLine = true,
+                    enabled = !saving,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = fullName,
+                    onValueChange = { fullName = it; localError = null },
+                    label = { Text("Họ tên") },
+                    singleLine = true,
+                    enabled = !saving,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it; localError = null },
+                    label = { Text("Email") },
+                    singleLine = true,
+                    enabled = !saving,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = studentId,
+                        onValueChange = { studentId = it; localError = null },
+                        label = { Text("Mã học sinh") },
+                        singleLine = true,
+                        enabled = !saving,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = employeeCode,
+                        onValueChange = { employeeCode = it; localError = null },
+                        label = { Text("Mã nhân viên") },
+                        singleLine = true,
+                        enabled = !saving,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                RoleSelector(
+                    selectedRoles = roles,
+                    enabled = !saving,
+                    onToggle = { role ->
+                        roles = if (role in roles) roles - role else roles + role
+                        localError = null
+                    }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !saving,
+                onClick = {
+                    val trimmedUsername = username.trim()
+                    val trimmedPassword = password.trim()
+                    val trimmedFullName = fullName.trim()
+                    when {
+                        trimmedUsername.isBlank() -> localError = "Vui lòng nhập tên đăng nhập."
+                        trimmedPassword.length < 6 -> localError = "Mật khẩu cần ít nhất 6 ký tự."
+                        trimmedFullName.isBlank() -> localError = "Vui lòng nhập họ tên."
+                        roles.isEmpty() -> localError = "Vui lòng chọn ít nhất một vai trò."
+                        else -> onSubmit(
+                            UserCreateRequest(
+                                username = trimmedUsername,
+                                password = trimmedPassword,
+                                fullName = trimmedFullName,
+                                email = email.blankToNull(),
+                                studentId = studentId.blankToNull(),
+                                employeeCode = employeeCode.blankToNull(),
+                                roles = roles.map { it.backendName() }
+                            )
+                        )
+                    }
+                }
+            ) {
+                Text(if (saving) "Đang tạo..." else "Tạo")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !saving) {
+                Text("Hủy")
+            }
+        }
+    )
+}
+
+@Composable
+private fun AssignRolesDialog(
+    user: UserProfileResponse,
+    saving: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (List<String>) -> Unit
+) {
+    var roles by remember(user.id) { mutableStateOf(user.roleSet()) }
+    var localError by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Gán vai trò") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(user.displayName(), style = MaterialTheme.typography.titleMedium)
+                Text(user.identityCode(), color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                localError?.let { InfoBanner(it, AppRed, Icons.Default.Settings) }
+                RoleSelector(
+                    selectedRoles = roles,
+                    enabled = !saving,
+                    onToggle = { role ->
+                        roles = if (role in roles) roles - role else roles + role
+                        localError = null
+                    }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !saving,
+                onClick = {
+                    if (roles.isEmpty()) {
+                        localError = "Vui lòng chọn ít nhất một vai trò."
+                    } else {
+                        onSubmit(roles.map { it.backendName() })
+                    }
+                }
+            ) {
+                Text(if (saving) "Đang lưu..." else "Lưu")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !saving) {
+                Text("Hủy")
+            }
+        }
+    )
+}
+
+@Composable
+private fun RoleSelector(
+    selectedRoles: Set<Role>,
+    enabled: Boolean,
+    onToggle: (Role) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text("Vai trò", color = AppMuted, style = MaterialTheme.typography.labelMedium)
+        Role.entries.forEach { role ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Checkbox(
+                    checked = role in selectedRoles,
+                    onCheckedChange = { onToggle(role) },
+                    enabled = enabled,
+                    colors = CheckboxDefaults.colors(checkedColor = AppIndigo)
+                )
+                Text(role.label(), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+private fun Role.label(): String = when (this) {
+    Role.ADMIN -> "Admin"
+    Role.TEACHER -> "Giáo viên"
+    Role.STUDENT -> "Học sinh"
+}
+
+private fun Role.backendName(): String = when (this) {
+    Role.ADMIN -> "ADMIN"
+    Role.TEACHER -> "TEACHER"
+    Role.STUDENT -> "STUDENT"
+}
+
+private fun UserProfileResponse.displayName(): String {
+    return fullName.takeIf { it.isNotBlank() } ?: username
+}
+
+private fun UserProfileResponse.identityCode(): String {
+    return studentId?.takeIf { it.isNotBlank() }
+        ?: employeeCode?.takeIf { it.isNotBlank() }
+        ?: username
+}
+
+private fun UserProfileResponse.primaryRole(): Role? {
+    val normalizedRoles = roles.orEmpty().map { role ->
+        role.removePrefix("ROLE_").uppercase()
+    }
+    return when {
+        "ADMIN" in normalizedRoles -> Role.ADMIN
+        "TEACHER" in normalizedRoles -> Role.TEACHER
+        "STUDENT" in normalizedRoles -> Role.STUDENT
+        else -> null
+    }
+}
+
+private fun UserProfileResponse.roleSet(): Set<Role> {
+    val normalizedRoles = roles.orEmpty().map { role ->
+        role.removePrefix("ROLE_").uppercase()
+    }.toSet()
+    return Role.entries.filter { it.backendName() in normalizedRoles }.toSet()
+}
+
+private fun UserProfileResponse.statusLabel(): String = when (status) {
+    "ACTIVE" -> "Hoạt động"
+    "LOCKED" -> "Bị khóa"
+    "PENDING" -> "Chờ duyệt"
+    else -> status ?: "--"
+}
+
+private fun formatAuditTime(value: String?): String {
+    return value?.takeIf { it.isNotBlank() }?.replace("T", " ")?.take(16) ?: "--"
+}
+
+private fun String.blankToNull(): String? {
+    return trim().takeIf { it.isNotBlank() }
 }

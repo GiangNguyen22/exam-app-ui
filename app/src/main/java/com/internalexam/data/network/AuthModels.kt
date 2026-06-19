@@ -209,6 +209,34 @@ data class UserProfileResponse(
     val roles: List<String>?
 )
 
+data class UserCreateRequest(
+    val username: String,
+    val password: String,
+    val fullName: String,
+    val email: String? = null,
+    val phone: String? = null,
+    val studentId: String? = null,
+    val employeeCode: String? = null,
+    val status: String = "ACTIVE",
+    val roles: List<String> = emptyList()
+)
+
+data class UserRolesRequest(
+    val roles: List<String>
+)
+
+data class AuditLogResponse(
+    val id: Long,
+    val userId: Long?,
+    val username: String?,
+    val action: String,
+    val resourceType: String?,
+    val resourceId: Long?,
+    val result: String?,
+    val reason: String?,
+    val createdAt: String?
+)
+
 data class QuestionImportErrorResponse(
     val rowNumber: Int,
     val questionKey: String?,

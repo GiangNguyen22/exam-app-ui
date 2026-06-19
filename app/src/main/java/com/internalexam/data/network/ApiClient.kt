@@ -109,6 +109,30 @@ object ApiClient {
         return callBackend { it.getCurrentUser(authorization) }
     }
 
+    suspend fun getUsers(authorization: String): ApiResponse<List<UserProfileResponse>> {
+        return callBackend { it.getUsers(authorization) }
+    }
+
+    suspend fun createUser(authorization: String, request: UserCreateRequest): ApiResponse<UserProfileResponse> {
+        return callBackend { it.createUser(authorization, request) }
+    }
+
+    suspend fun lockUser(authorization: String, userId: Long): ApiResponse<UserProfileResponse> {
+        return callBackend { it.lockUser(authorization, userId) }
+    }
+
+    suspend fun unlockUser(authorization: String, userId: Long): ApiResponse<UserProfileResponse> {
+        return callBackend { it.unlockUser(authorization, userId) }
+    }
+
+    suspend fun updateUserRoles(authorization: String, userId: Long, request: UserRolesRequest): ApiResponse<UserProfileResponse> {
+        return callBackend { it.updateUserRoles(authorization, userId, request) }
+    }
+
+    suspend fun getAuditLogs(authorization: String): ApiResponse<List<AuditLogResponse>> {
+        return callBackend { it.getAuditLogs(authorization) }
+    }
+
     private suspend fun <T> callBackend(block: suspend (AuthApi) -> T): T {
         var lastException: IOException? = null
 

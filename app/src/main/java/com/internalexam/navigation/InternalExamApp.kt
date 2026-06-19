@@ -35,6 +35,7 @@ import androidx.navigation.compose.rememberNavController
 import com.internalexam.data.ExamAttemptStore
 import com.internalexam.data.SessionManager
 import com.internalexam.model.mock.Role
+import com.internalexam.ui.admin.AdminAuditLogScreen
 import com.internalexam.ui.admin.AdminDashboardScreen
 import com.internalexam.ui.admin.UserManagementScreen
 import com.internalexam.ui.auth.LoginScreen
@@ -87,6 +88,7 @@ object Routes {
     const val Reports = "teacher/reports"
     const val AdminDashboard = "admin/dashboard"
     const val Users = "admin/users"
+    const val AuditLogs = "admin/audit-logs"
 }
 
 @Composable
@@ -124,11 +126,11 @@ fun InternalExamApp() {
             composable(Routes.StudentHome) {
                 StudentHomeScreen(
                     onLobby = { exam ->
-                        ExamAttemptStore.setBackendExamId(exam.id, exam)
+                        ExamAttemptStore.startNewAttempt(exam.id, exam)
                         nav.navigate(Routes.Lobby)
                     },
                     onOpenResult = { exam ->
-                        ExamAttemptStore.setBackendExamId(exam.id, exam)
+                        ExamAttemptStore.selectExam(exam.id, exam)
                         nav.navigate(Routes.Result)
                     },
                     onSeeAllResults = { nav.navigate(Routes.Results) }
@@ -137,7 +139,7 @@ fun InternalExamApp() {
             composable(Routes.StudentExams) {
                 StudentExamsScreen(
                     onLobby = { exam ->
-                        ExamAttemptStore.setBackendExamId(exam.id, exam)
+                        ExamAttemptStore.startNewAttempt(exam.id, exam)
                         nav.navigate(Routes.Lobby)
                     },
                     onBack = { nav.popBackStack() }
@@ -146,7 +148,7 @@ fun InternalExamApp() {
             composable(Routes.Results) {
                 StudentResultsScreen(
                     onOpenResult = { exam ->
-                        ExamAttemptStore.setBackendExamId(exam.id, exam)
+                        ExamAttemptStore.selectExam(exam.id, exam)
                         nav.navigate(Routes.Result)
                     },
                     onBack = { nav.popBackStack() }
@@ -164,12 +166,23 @@ fun InternalExamApp() {
                     onBack = { nav.popBackStack() },
                     onAutoSubmitted = {
                         nav.navigate(Routes.Result) {
-                            popUpTo(Routes.Taking) { inclusive = true }
+                            popUpTo(Routes.Lobby) { inclusive = true }
+                            launchSingleTop = true
                         }
                     }
                 )
             }
-            composable(Routes.Submit) { SubmitConfirmationScreen({ nav.navigate(Routes.Result) }, { nav.popBackStack() }) }
+            composable(Routes.Submit) {
+                SubmitConfirmationScreen(
+                    onConfirm = {
+                        nav.navigate(Routes.Result) {
+                            popUpTo(Routes.Lobby) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
+                    onBack = { nav.popBackStack() }
+                )
+            }
             composable(Routes.Result) { ResultScreen { nav.popBackStack() } }
             composable(Routes.TeacherDashboard) { TeacherDashboardScreen({ nav.navigate(Routes.Questions) }, { nav.navigate(Routes.TeacherExams) }, { nav.navigate(Routes.GenerateExam) }, { nav.navigate(Routes.Monitor) }, { nav.navigate(Routes.Reports) }) }
             composable(Routes.Questions) { QuestionBankScreen({ nav.navigate(Routes.CreateQuestion) }, { nav.popBackStack() }) }
@@ -208,8 +221,14 @@ fun InternalExamApp() {
             composable(Routes.GenerateExam) { AutoGenerateExamScreen { nav.popBackStack() } }
             composable(Routes.Monitor) { LiveMonitoringScreen { nav.popBackStack() } }
             composable(Routes.Reports) { ReportDashboardScreen { nav.popBackStack() } }
-            composable(Routes.AdminDashboard) { AdminDashboardScreen { nav.navigate(Routes.Users) } }
+            composable(Routes.AdminDashboard) {
+                AdminDashboardScreen(
+                    openUsers = { nav.navigate(Routes.Users) },
+                    openAuditLogs = { nav.navigate(Routes.AuditLogs) }
+                )
+            }
             composable(Routes.Users) { UserManagementScreen { nav.popBackStack() } }
+            composable(Routes.AuditLogs) { AdminAuditLogScreen { nav.popBackStack() } }
         }
     }
 }
@@ -232,10 +251,10 @@ private fun RoleBottomBar(nav: NavHostController, current: String) {
 
     val items = when (activeRole) {
         Role.STUDENT -> listOf(
-            NavItem("Home", Routes.StudentHome, Icons.Default.Home),
-            NavItem("Exams", Routes.StudentExams, Icons.Default.Quiz),
-            NavItem("Results", Routes.Results, Icons.Default.Assessment),
-            NavItem("Profile", Routes.Profile, Icons.Default.Person)
+            NavItem("Trang chủ", Routes.StudentHome, Icons.Default.Home),
+            NavItem("Phòng thi", Routes.StudentExams, Icons.Default.Quiz),
+            NavItem("Kết quả", Routes.Results, Icons.Default.Assessment),
+            NavItem("Hồ sơ", Routes.Profile, Icons.Default.Person)
         )
         Role.TEACHER -> listOf(
             NavItem("Dashboard", Routes.TeacherDashboard, Icons.Default.Dashboard),
@@ -244,9 +263,9 @@ private fun RoleBottomBar(nav: NavHostController, current: String) {
             NavItem("Profile", Routes.Profile, Icons.Default.Person)
         )
         Role.ADMIN -> listOf(
-            NavItem("Dashboard", Routes.AdminDashboard, Icons.Default.Dashboard),
-            NavItem("Users", Routes.Users, Icons.Default.Groups),
-            NavItem("Profile", Routes.Profile, Icons.Default.Person)
+            NavItem("Tổng quan", Routes.AdminDashboard, Icons.Default.Dashboard),
+            NavItem("Tài khoản", Routes.Users, Icons.Default.Groups),
+            NavItem("Hồ sơ", Routes.Profile, Icons.Default.Person)
         )
     }
 

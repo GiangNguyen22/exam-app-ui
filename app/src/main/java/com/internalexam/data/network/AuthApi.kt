@@ -117,4 +117,39 @@ interface AuthApi {
     suspend fun getCurrentUser(
         @Header("Authorization") authorization: String
     ): ApiResponse<UserProfileResponse>
+
+    @GET("api/users")
+    suspend fun getUsers(
+        @Header("Authorization") authorization: String
+    ): ApiResponse<List<UserProfileResponse>>
+
+    @POST("api/users")
+    suspend fun createUser(
+        @Header("Authorization") authorization: String,
+        @Body request: UserCreateRequest
+    ): ApiResponse<UserProfileResponse>
+
+    @PUT("api/users/{userId}/lock")
+    suspend fun lockUser(
+        @Header("Authorization") authorization: String,
+        @Path("userId") userId: Long
+    ): ApiResponse<UserProfileResponse>
+
+    @PUT("api/users/{userId}/unlock")
+    suspend fun unlockUser(
+        @Header("Authorization") authorization: String,
+        @Path("userId") userId: Long
+    ): ApiResponse<UserProfileResponse>
+
+    @PUT("api/users/{userId}/roles")
+    suspend fun updateUserRoles(
+        @Header("Authorization") authorization: String,
+        @Path("userId") userId: Long,
+        @Body request: UserRolesRequest
+    ): ApiResponse<UserProfileResponse>
+
+    @GET("api/audit-logs")
+    suspend fun getAuditLogs(
+        @Header("Authorization") authorization: String
+    ): ApiResponse<List<AuditLogResponse>>
 }

@@ -26,12 +26,21 @@ object ExamAttemptStore {
     var attemptEndAtMillis: Long? = null
         private set
 
-    fun setBackendExamId(examId: Long, exam: ExamResponse? = null) {
+    fun selectExam(examId: Long, exam: ExamResponse? = null) {
         backendExamId = examId
         selectedExam.value = exam
+    }
+
+    fun startNewAttempt(examId: Long, exam: ExamResponse? = null) {
+        selectExam(examId, exam)
         backendQuestions.value = emptyList()
-        // Chọn đề khác -> bỏ đáp án và đồng hồ của lần làm trước để tránh lẫn dữ liệu.
+        // Bắt đầu một attempt mới thì mới xóa dữ liệu cũ.
         reset()
+    }
+
+    @Deprecated("Use selectExam() or startNewAttempt() depending on intent.")
+    fun setBackendExamId(examId: Long, exam: ExamResponse? = null) {
+        startNewAttempt(examId, exam)
     }
 
     /** Đặt mốc hết giờ một lần cho mỗi lần làm bài; gọi lại sẽ không làm mới mốc. */
