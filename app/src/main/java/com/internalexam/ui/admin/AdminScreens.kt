@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,6 +28,8 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -34,6 +38,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -49,6 +54,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import com.internalexam.data.SessionManager
 import com.internalexam.data.auth.backendName
@@ -59,6 +68,9 @@ import com.internalexam.data.network.AuditLogResponse
 import com.internalexam.data.network.UserCreateRequest
 import com.internalexam.data.network.UserProfileResponse
 import com.internalexam.data.network.UserRolesRequest
+import com.internalexam.data.network.PermissionResponse
+import com.internalexam.data.network.RolePermissionsUpdateRequest
+import com.internalexam.data.network.RoleResponse
 import com.internalexam.model.mock.NetworkState
 import com.internalexam.model.mock.Role
 import com.internalexam.ui.components.AppBackground
@@ -85,11 +97,14 @@ import kotlinx.coroutines.launch
 @Composable
 fun AdminDashboardScreen(
     openUsers: () -> Unit,
-    openAuditLogs: () -> Unit
+    openAuditLogs: () -> Unit,
+    openRolePermissions: () -> Unit
 ) {
     var message by remember { mutableStateOf<String?>(null) }
     var userCount by remember { mutableStateOf<Int?>(null) }
     var auditLogCount by remember { mutableStateOf<Int?>(null) }
+    var roleCount by remember { mutableStateOf<Int?>(null) }
+    var permissionCount by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(Unit) {
         val authorization = SessionManager.authorizationHeader()
@@ -102,12 +117,16 @@ fun AdminDashboardScreen(
             .onFailure { message = "Không tải được số liệu tài khoản từ backend." }
         runCatching { ApiClient.getAuditLogs(authorization).data.orEmpty().size }
             .onSuccess { auditLogCount = it }
+        runCatching { ApiClient.getRoles(authorization).data.orEmpty().size }
+            .onSuccess { roleCount = it }
+        runCatching { ApiClient.getPermissions(authorization).data.orEmpty().size }
+            .onSuccess { permissionCount = it }
     }
 
     AppBackground {
         Column(
             modifier = Modifier
-                .weight(1f)
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
         Spacer(Modifier.height(18.dp))
@@ -129,6 +148,7 @@ fun AdminDashboardScreen(
 
         SectionTitle("Chức năng quản trị")
         val adminActions = listOf(
+            AdminAction("Phân quyền theo role", Icons.Default.Security, openRolePermissions),
             AdminAction("Quản lý tài khoản", Icons.Default.Groups, openUsers),
             AdminAction("Nhật ký audit", Icons.Default.History, openAuditLogs)
         )
@@ -468,6 +488,228 @@ fun AdminAuditLogScreen(onBack: () -> Unit) {
 }
 
 @Composable
+fun RolePermissionScreen(onBack: () -> Unit) {
+    var roles by remember { mutableStateOf<List<RoleResponse>>(emptyList()) }
+    var permissions by remember { mutableStateOf<List<PermissionResponse>>(emptyList()) }
+    var selectedRoleId by remember { mutableStateOf<Long?>(null) }
+    var selectedPermissions by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var isSaving by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val selectedRole = roles.firstOrNull { it.id == selectedRoleId }
+    val savedPermissions = selectedRole?.permissions.orEmpty().toSet()
+    val hasChanges = selectedRole != null && selectedPermissions != savedPermissions
+
+    fun loadRbac() {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Vui lòng đăng nhập lại."
+            isLoading = false
+            return
+        }
+        scope.launch {
+            isLoading = true
+            message = null
+            try {
+                val roleResponse = ApiClient.getRoles(authorization)
+                val permissionResponse = ApiClient.getPermissions(authorization)
+                if (roleResponse.success && permissionResponse.success) {
+                    roles = roleResponse.data.orEmpty()
+                    permissions = permissionResponse.data.orEmpty()
+                    val nextRole = roles.firstOrNull { it.id == selectedRoleId } ?: roles.firstOrNull()
+                    selectedRoleId = nextRole?.id
+                    selectedPermissions = nextRole?.permissions.orEmpty().toSet()
+                } else {
+                    message = roleResponse.message.ifBlank {
+                        permissionResponse.message.ifBlank { "Không tải được dữ liệu phân quyền." }
+                    }
+                }
+            } catch (exception: Exception) {
+                message = "Không kết nối được backend phân quyền."
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    fun savePermissions() {
+        val role = selectedRole ?: return
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Vui lòng đăng nhập lại."
+            return
+        }
+        if (role.displayRoleName() == "ADMIN" && "rbac:manage" !in selectedPermissions) {
+            message = "Role Admin cần giữ quyền rbac:manage để tiếp tục quản trị phân quyền."
+            return
+        }
+        scope.launch {
+            isSaving = true
+            message = null
+            try {
+                val response = ApiClient.updateRolePermissions(
+                    authorization,
+                    role.id,
+                    RolePermissionsUpdateRequest(selectedPermissions.sorted())
+                )
+                val updatedRole = response.data
+                if (response.success && updatedRole != null) {
+                    roles = roles.map { item -> if (item.id == updatedRole.id) updatedRole else item }
+                    selectedPermissions = updatedRole.permissions.orEmpty().toSet()
+                    message = "Đã cập nhật quyền cho role ${updatedRole.displayRoleName()}."
+                } else {
+                    message = response.message.ifBlank { "Không lưu được phân quyền." }
+                }
+            } catch (exception: Exception) {
+                message = "Không lưu được phân quyền."
+            } finally {
+                isSaving = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        loadRbac()
+    }
+
+    AppBackground {
+        ExamTopBar("Phân quyền theo role", onBack)
+
+        if (message != null) {
+            InfoBanner(message.orEmpty(), AppAmber, Icons.Default.Security)
+            Spacer(Modifier.height(10.dp))
+        }
+
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 96.dp)) {
+            if (isLoading) {
+                item { LoadingStateCard("Đang tải phân quyền...") }
+            } else if (roles.isEmpty() || permissions.isEmpty()) {
+                item { InfoBanner("Chưa có role hoặc permission để cấu hình.", AppAmber, Icons.Default.Security) }
+            } else {
+                item {
+                    SectionTitle("Vai trò")
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        roles.forEach { role ->
+                            val selected = role.id == selectedRoleId
+                            Button(
+                                onClick = {
+                                    selectedRoleId = role.id
+                                    selectedPermissions = role.permissions.orEmpty().toSet()
+                                    message = null
+                                },
+                                shape = MaterialTheme.shapes.medium,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (selected) AppIndigo else AppIndigo.copy(alpha = 0.10f),
+                                    contentColor = if (selected) AppSurface else AppIndigo
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("${role.displayRoleName()} · ${role.permissions.orEmpty().size} quyền")
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    selectedRole?.let { role ->
+                        Card(
+                            shape = MaterialTheme.shapes.large,
+                            colors = CardDefaults.cardColors(containerColor = AppSurface),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+                        ) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(role.displayRoleName(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "${selectedPermissions.size}/${permissions.size} quyền đang bật",
+                                    color = AppMuted,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Button(
+                                    onClick = { savePermissions() },
+                                    enabled = hasChanges && !isSaving,
+                                    shape = MaterialTheme.shapes.medium,
+                                    colors = ButtonDefaults.buttonColors(containerColor = AppIndigo),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(if (isSaving) "Đang lưu..." else if (hasChanges) "Lưu phân quyền" else "Chưa có thay đổi")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                val permissionGroups = permissions
+                    .groupBy { it.name.permissionGroup() }
+                    .toList()
+                    .sortedBy { it.first }
+
+                items(permissionGroups, key = { it.first }) { group ->
+                    val groupName = group.first
+                    val groupPermissions = group.second.sortedBy { it.name }
+                    val groupPermissionNames = groupPermissions.map { it.name }.toSet()
+                    val allChecked = groupPermissionNames.all { it in selectedPermissions }
+
+                    Card(
+                        shape = MaterialTheme.shapes.large,
+                        colors = CardDefaults.cardColors(containerColor = AppSurface),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(groupName.permissionGroupLabel(), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                TextButton(
+                                    enabled = !isSaving,
+                                    onClick = {
+                                        selectedPermissions = if (allChecked) {
+                                            selectedPermissions - groupPermissionNames
+                                        } else {
+                                            selectedPermissions + groupPermissionNames
+                                        }
+                                    }
+                                ) {
+                                    Text(if (allChecked) "Bỏ nhóm" else "Chọn nhóm")
+                                }
+                            }
+                            groupPermissions.forEach { permission ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = permission.name in selectedPermissions,
+                                        onCheckedChange = { checked ->
+                                            selectedPermissions = if (checked) {
+                                                selectedPermissions + permission.name
+                                            } else {
+                                                selectedPermissions - permission.name
+                                            }
+                                            message = null
+                                        },
+                                        enabled = !isSaving,
+                                        colors = CheckboxDefaults.colors(checkedColor = AppIndigo)
+                                    )
+                                    Column(Modifier.weight(1f)) {
+                                        Text(permission.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                        permission.description?.takeIf { it.isNotBlank() }?.let { description ->
+                                            Text(description, color = AppMuted, style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun AuditLogCard(log: AuditLogResponse) {
     val resultColor = when (log.result) {
         "allow" -> AppMint
@@ -521,12 +763,18 @@ private fun CreateUserDialog(
     var employeeCode by remember { mutableStateOf("") }
     var roles by remember { mutableStateOf(setOf(Role.STUDENT)) }
     var localError by remember { mutableStateOf<String?>(null) }
+    var showPassword by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Tạo tài khoản") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 localError?.let { InfoBanner(it, AppRed, Icons.Default.Settings) }
                 OutlinedTextField(
                     value = username,
@@ -534,6 +782,7 @@ private fun CreateUserDialog(
                     label = { Text("Tên đăng nhập") },
                     singleLine = true,
                     enabled = !saving,
+                    supportingText = { Text("Dùng để đăng nhập hệ thống") },
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
@@ -542,6 +791,17 @@ private fun CreateUserDialog(
                     label = { Text("Mật khẩu") },
                     singleLine = true,
                     enabled = !saving,
+                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        IconButton(onClick = { showPassword = !showPassword }, enabled = !saving) {
+                            Icon(
+                                if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (showPassword) "Ẩn mật khẩu" else "Hiện mật khẩu"
+                            )
+                        }
+                    },
+                    supportingText = { Text("Tối thiểu 6 ký tự") },
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
@@ -558,26 +818,9 @@ private fun CreateUserDialog(
                     label = { Text("Email") },
                     singleLine = true,
                     enabled = !saving,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier.fillMaxWidth()
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = studentId,
-                        onValueChange = { studentId = it; localError = null },
-                        label = { Text("Mã học sinh") },
-                        singleLine = true,
-                        enabled = !saving,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = employeeCode,
-                        onValueChange = { employeeCode = it; localError = null },
-                        label = { Text("Mã nhân viên") },
-                        singleLine = true,
-                        enabled = !saving,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
                 RoleSelector(
                     selectedRoles = roles,
                     enabled = !saving,
@@ -586,6 +829,28 @@ private fun CreateUserDialog(
                         localError = null
                     }
                 )
+                if (Role.STUDENT in roles) {
+                    OutlinedTextField(
+                        value = studentId,
+                        onValueChange = { studentId = it; localError = null },
+                        label = { Text("Mã học sinh") },
+                        singleLine = true,
+                        enabled = !saving,
+                        supportingText = { Text("Bỏ trống để backend tự sinh mã SV theo năm hiện tại") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                if (Role.TEACHER in roles || Role.ADMIN in roles) {
+                    OutlinedTextField(
+                        value = employeeCode,
+                        onValueChange = { employeeCode = it; localError = null },
+                        label = { Text("Mã nhân viên") },
+                        singleLine = true,
+                        enabled = !saving,
+                        supportingText = { Text("Bỏ trống để backend tự sinh mã NV theo năm hiện tại") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         },
         confirmButton = {
@@ -595,19 +860,23 @@ private fun CreateUserDialog(
                     val trimmedUsername = username.trim()
                     val trimmedPassword = password.trim()
                     val trimmedFullName = fullName.trim()
+                    val trimmedEmail = email.trim()
+                    val trimmedStudentId = studentId.trim()
+                    val trimmedEmployeeCode = employeeCode.trim()
                     when {
                         trimmedUsername.isBlank() -> localError = "Vui lòng nhập tên đăng nhập."
                         trimmedPassword.length < 6 -> localError = "Mật khẩu cần ít nhất 6 ký tự."
                         trimmedFullName.isBlank() -> localError = "Vui lòng nhập họ tên."
                         roles.isEmpty() -> localError = "Vui lòng chọn ít nhất một vai trò."
+                        trimmedEmail.isNotBlank() && !trimmedEmail.isValidEmailLike() -> localError = "Email chưa đúng định dạng."
                         else -> onSubmit(
                             UserCreateRequest(
                                 username = trimmedUsername,
                                 password = trimmedPassword,
                                 fullName = trimmedFullName,
-                                email = email.blankToNull(),
-                                studentId = studentId.blankToNull(),
-                                employeeCode = employeeCode.blankToNull(),
+                                email = trimmedEmail.blankToNull(),
+                                studentId = trimmedStudentId.blankToNull(),
+                                employeeCode = trimmedEmployeeCode.blankToNull(),
                                 roles = roles.map { it.backendName() }
                             )
                         )
@@ -706,6 +975,24 @@ private fun Role.label(): String = when (this) {
     Role.STUDENT -> "Học sinh"
 }
 
+private fun RoleResponse.displayRoleName(): String {
+    return name.removePrefix("ROLE_").uppercase()
+}
+
+private fun String.permissionGroup(): String {
+    return substringBefore(":", missingDelimiterValue = "other").lowercase()
+}
+
+private fun String.permissionGroupLabel(): String = when (this) {
+    "user" -> "Tài khoản"
+    "audit" -> "Nhật ký audit"
+    "rbac" -> "Phân quyền"
+    "question" -> "Ngân hàng câu hỏi"
+    "exam" -> "Đề thi"
+    "result" -> "Kết quả"
+    else -> replaceFirstChar { char -> char.uppercase() }
+}
+
 private fun UserProfileResponse.displayName(): String {
     return fullName.takeIf { it.isNotBlank() } ?: username
 }
@@ -727,6 +1014,11 @@ private fun formatAuditTime(value: String?): String {
     return value?.takeIf { it.isNotBlank() }?.replace("T", " ")?.take(16) ?: "--"
 }
 
+private fun String.isValidEmailLike(): Boolean {
+    return contains("@") && substringAfter("@").contains(".") && !contains(" ")
+}
+
 private fun String.blankToNull(): String? {
     return trim().takeIf { it.isNotBlank() }
 }
+

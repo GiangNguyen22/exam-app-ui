@@ -160,6 +160,7 @@ data class ExamReportResponse(
 data class ExamReportItemResponse(
     val resultId: Long,
     val studentId: Long,
+    val studentCode: String?,
     val studentName: String?,
     val username: String?,
     val score: String?,
@@ -231,6 +232,23 @@ data class UserCreateRequest(
 
 data class UserRolesRequest(
     val roles: List<String>
+)
+
+data class PermissionResponse(
+    val id: Long,
+    val name: String,
+    val description: String?
+)
+
+data class RoleResponse(
+    val id: Long,
+    val name: String,
+    val description: String?,
+    val permissions: List<String>?
+)
+
+data class RolePermissionsUpdateRequest(
+    val permissions: List<String>
 )
 
 data class AuditLogResponse(

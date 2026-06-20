@@ -2569,7 +2569,11 @@ private fun ReportResultRow(result: ExamReportItemResponse) {
     val statusColor = reportStatusColor(result.status)
     val studentName = result.studentName?.takeIf { it.isNotBlank() }
         ?: result.username?.takeIf { it.isNotBlank() }
-        ?: "Student ${result.studentId}"
+        ?: result.studentCode?.takeIf { it.isNotBlank() }
+        ?: "Student #${result.studentId}"
+    val studentIdentity = result.studentCode?.takeIf { it.isNotBlank() }
+        ?: result.username?.takeIf { it.isNotBlank() }
+        ?: "User #${result.studentId}"
 
     Card(
         shape = MaterialTheme.shapes.large,
@@ -2584,7 +2588,7 @@ private fun ReportResultRow(result: ExamReportItemResponse) {
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(studentName, fontWeight = FontWeight.SemiBold, color = AppText)
-                    Text(result.username ?: "Student ID ${result.studentId}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                    Text(studentIdentity, color = AppMuted, style = MaterialTheme.typography.bodyMedium)
                 }
                 ChipText(reportStatusLabel(result.status), statusColor)
             }

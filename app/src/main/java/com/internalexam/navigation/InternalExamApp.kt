@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -37,6 +38,7 @@ import com.internalexam.data.SessionManager
 import com.internalexam.model.mock.Role
 import com.internalexam.ui.admin.AdminAuditLogScreen
 import com.internalexam.ui.admin.AdminDashboardScreen
+import com.internalexam.ui.admin.RolePermissionScreen
 import com.internalexam.ui.admin.UserManagementScreen
 import com.internalexam.ui.auth.LoginScreen
 import com.internalexam.ui.auth.SplashScreen
@@ -88,6 +90,7 @@ object Routes {
     const val Reports = "teacher/reports"
     const val AdminDashboard = "admin/dashboard"
     const val Users = "admin/users"
+    const val RolePermissions = "admin/role-permissions"
     const val AuditLogs = "admin/audit-logs"
 }
 
@@ -250,10 +253,12 @@ fun InternalExamApp() {
             composable(Routes.AdminDashboard) {
                 AdminDashboardScreen(
                     openUsers = { nav.navigate(Routes.Users) },
-                    openAuditLogs = { nav.navigate(Routes.AuditLogs) }
+                    openAuditLogs = { nav.navigate(Routes.AuditLogs) },
+                    openRolePermissions = { nav.navigate(Routes.RolePermissions) }
                 )
             }
             composable(Routes.Users) { UserManagementScreen { nav.popBackStack() } }
+            composable(Routes.RolePermissions) { RolePermissionScreen { nav.popBackStack() } }
             composable(Routes.AuditLogs) { AdminAuditLogScreen { nav.popBackStack() } }
         }
     }

@@ -168,6 +168,23 @@ interface AuthApi {
         @Body request: UserRolesRequest
     ): ApiResponse<UserProfileResponse>
 
+    @GET("api/rbac/roles")
+    suspend fun getRoles(
+        @Header("Authorization") authorization: String
+    ): ApiResponse<List<RoleResponse>>
+
+    @GET("api/rbac/permissions")
+    suspend fun getPermissions(
+        @Header("Authorization") authorization: String
+    ): ApiResponse<List<PermissionResponse>>
+
+    @PUT("api/rbac/roles/{roleId}/permissions")
+    suspend fun updateRolePermissions(
+        @Header("Authorization") authorization: String,
+        @Path("roleId") roleId: Long,
+        @Body request: RolePermissionsUpdateRequest
+    ): ApiResponse<RoleResponse>
+
     @GET("api/audit-logs")
     suspend fun getAuditLogs(
         @Header("Authorization") authorization: String

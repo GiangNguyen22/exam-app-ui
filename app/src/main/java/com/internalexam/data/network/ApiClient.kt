@@ -145,6 +145,22 @@ object ApiClient {
         return callBackend { it.updateUserRoles(authorization, userId, request) }
     }
 
+    suspend fun getRoles(authorization: String): ApiResponse<List<RoleResponse>> {
+        return callBackend { it.getRoles(authorization) }
+    }
+
+    suspend fun getPermissions(authorization: String): ApiResponse<List<PermissionResponse>> {
+        return callBackend { it.getPermissions(authorization) }
+    }
+
+    suspend fun updateRolePermissions(
+        authorization: String,
+        roleId: Long,
+        request: RolePermissionsUpdateRequest
+    ): ApiResponse<RoleResponse> {
+        return callBackend { it.updateRolePermissions(authorization, roleId, request) }
+    }
+
     suspend fun getAuditLogs(authorization: String): ApiResponse<List<AuditLogResponse>> {
         return callBackend { it.getAuditLogs(authorization) }
     }
