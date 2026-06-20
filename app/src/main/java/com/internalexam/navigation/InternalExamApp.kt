@@ -105,14 +105,26 @@ fun InternalExamApp() {
     ) { innerPadding ->
         NavHost(
             navController = nav,
-            startDestination = Routes.Login,
+            startDestination = Routes.Splash,
             modifier = Modifier.padding(innerPadding),
             enterTransition = { fadeIn(tween(300)) + slideInHorizontally(tween(300)) { it / 5 } },
             exitTransition = { fadeOut(tween(250)) },
             popEnterTransition = { fadeIn(tween(300)) + slideInHorizontally(tween(300)) { -it / 5 } },
             popExitTransition = { fadeOut(tween(250)) + slideOutHorizontally(tween(300)) { it / 5 } }
         ) {
-            composable(Routes.Splash) { SplashScreen { nav.navigate(Routes.Login) } }
+            composable(Routes.Splash) {
+                SplashScreen {
+                    val targetRoute = if (SessionManager.hasActiveSession()) {
+                        SessionManager.currentRole?.startRoute() ?: Routes.Login
+                    } else {
+                        Routes.Login
+                    }
+                    nav.navigate(targetRoute) {
+                        popUpTo(Routes.Splash) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            }
             composable(Routes.Login) { LoginScreen { role -> nav.navigate(role.startRoute()) { popUpTo(Routes.Login) { inclusive = true } } } }
             composable(Routes.Profile) {
                 ProfileScreen {

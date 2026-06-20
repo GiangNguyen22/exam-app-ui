@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.internalexam.data.SessionManager
+import com.internalexam.data.auth.toAppRole
 import com.internalexam.data.network.ApiClient
 import com.internalexam.data.network.LoginRequest
 import com.internalexam.model.mock.Role
@@ -79,6 +80,15 @@ fun SplashScreen(onContinue: () -> Unit) {
     LaunchedEffect(Unit) {
         visible = true
         delay(2200)
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization != null && SessionManager.hasActiveSession()) {
+            runCatching { ApiClient.getCurrentUser(authorization) }
+                .onFailure { exception ->
+                    if (exception is HttpException && exception.code() in listOf(401, 403)) {
+                        SessionManager.clear()
+                    }
+                }
+        }
         onContinue()
     }
 
@@ -330,18 +340,5 @@ fun LoginScreen(onLogin: (Role) -> Unit) {
                 }
             }
         }
-    }
-}
-
-private fun List<String>?.toAppRole(): Role? {
-    val normalized = this.orEmpty().map { role ->
-        role.removePrefix("ROLE_").uppercase()
-    }.toSet()
-
-    return when {
-        "ADMIN" in normalized -> Role.ADMIN
-        "TEACHER" in normalized -> Role.TEACHER
-        "STUDENT" in normalized -> Role.STUDENT
-        else -> null
     }
 }

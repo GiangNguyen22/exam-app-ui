@@ -51,6 +51,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.internalexam.data.SessionManager
+import com.internalexam.data.auth.backendName
+import com.internalexam.data.auth.primaryRole
+import com.internalexam.data.auth.roleSet
 import com.internalexam.data.network.ApiClient
 import com.internalexam.data.network.AuditLogResponse
 import com.internalexam.data.network.UserCreateRequest
@@ -703,12 +706,6 @@ private fun Role.label(): String = when (this) {
     Role.STUDENT -> "Học sinh"
 }
 
-private fun Role.backendName(): String = when (this) {
-    Role.ADMIN -> "ADMIN"
-    Role.TEACHER -> "TEACHER"
-    Role.STUDENT -> "STUDENT"
-}
-
 private fun UserProfileResponse.displayName(): String {
     return fullName.takeIf { it.isNotBlank() } ?: username
 }
@@ -717,25 +714,6 @@ private fun UserProfileResponse.identityCode(): String {
     return studentId?.takeIf { it.isNotBlank() }
         ?: employeeCode?.takeIf { it.isNotBlank() }
         ?: username
-}
-
-private fun UserProfileResponse.primaryRole(): Role? {
-    val normalizedRoles = roles.orEmpty().map { role ->
-        role.removePrefix("ROLE_").uppercase()
-    }
-    return when {
-        "ADMIN" in normalizedRoles -> Role.ADMIN
-        "TEACHER" in normalizedRoles -> Role.TEACHER
-        "STUDENT" in normalizedRoles -> Role.STUDENT
-        else -> null
-    }
-}
-
-private fun UserProfileResponse.roleSet(): Set<Role> {
-    val normalizedRoles = roles.orEmpty().map { role ->
-        role.removePrefix("ROLE_").uppercase()
-    }.toSet()
-    return Role.entries.filter { it.backendName() in normalizedRoles }.toSet()
 }
 
 private fun UserProfileResponse.statusLabel(): String = when (status) {
