@@ -32,7 +32,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
@@ -92,6 +92,7 @@ import com.internalexam.data.network.ExamQuestionCreateRequest
 import com.internalexam.data.network.ExamQuestionResponse
 import com.internalexam.data.network.ExamResponse
 import com.internalexam.data.network.ExamUpdateRequest
+import com.internalexam.data.network.QuestionCreateRequest
 import com.internalexam.data.network.QuestionResponse
 import com.internalexam.data.network.SubjectResponse
 import com.internalexam.data.network.TopicResponse
@@ -404,14 +405,18 @@ fun TeacherDashboardScreen(
 }
 
 @Composable
-fun QuestionBankScreen(onCreate: () -> Unit, onBack: () -> Unit) {
+fun QuestionBankScreen(
+    onCreate: () -> Unit,
+    onEdit: (QuestionResponse) -> Unit,
+    onBack: () -> Unit
+) {
     var questions by remember { mutableStateOf<List<QuestionResponse>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
     var importLoading by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val gson = remember { Gson() }
 
     fun loadQuestions() {
         scope.launch {
@@ -420,12 +425,41 @@ fun QuestionBankScreen(onCreate: () -> Unit, onBack: () -> Unit) {
                 message = "Please sign in again."
                 return@launch
             }
+            isLoading = true
             try {
                 val response = ApiClient.getQuestions(authorization)
                 questions = response.data.orEmpty()
                 message = if (questions.isEmpty()) "No questions yet." else null
             } catch (exception: Exception) {
                 message = "Cannot load questions right now."
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    fun deleteQuestion(question: QuestionResponse) {
+        scope.launch {
+            val authorization = SessionManager.authorizationHeader()
+            if (authorization == null) {
+                message = "Please sign in again."
+                return@launch
+            }
+            try {
+                val response = ApiClient.deleteQuestion(authorization, question.id)
+                if (response.success) {
+                    questions = questions.filterNot { it.id == question.id }
+                    message = "Question deleted."
+                    if (questions.isEmpty()) {
+                        message = "Question deleted. No questions left."
+                    }
+                } else {
+                    message = response.message.ifBlank { "Cannot delete question right now." }
+                }
+            } catch (exception: HttpException) {
+                message = "Cannot delete question. Please check your account permission."
+            } catch (exception: Exception) {
+                message = "Cannot delete question right now."
             }
         }
     }
@@ -489,7 +523,12 @@ fun QuestionBankScreen(onCreate: () -> Unit, onBack: () -> Unit) {
         } else {
             questions.filter { question ->
                 question.content.contains(query, ignoreCase = true) ||
-                    question.id.toString().contains(query)
+                    question.id.toString().contains(query) ||
+                    question.subjectName.orEmpty().contains(query, ignoreCase = true) ||
+                    question.topicName.orEmpty().contains(query, ignoreCase = true) ||
+                    question.type.orEmpty().contains(query, ignoreCase = true) ||
+                    question.difficulty.orEmpty().contains(query, ignoreCase = true) ||
+                    question.answers.orEmpty().any { it.content.contains(query, ignoreCase = true) }
             }
         }
     }
@@ -525,6 +564,11 @@ fun QuestionBankScreen(onCreate: () -> Unit, onBack: () -> Unit) {
         }
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 90.dp)) {
+            if (isLoading) {
+                item {
+                    LoadingStateCard("Loading questions...")
+                }
+            }
             if (filteredQuestions.isEmpty() && searchQuery.isNotBlank()) {
                 item {
                     InfoBanner("No matching questions.", AppAmber, Icons.Default.Info)
@@ -542,6 +586,57 @@ fun QuestionBankScreen(onCreate: () -> Unit, onBack: () -> Unit) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(question.content, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                             ChipText("ID ${question.id}", AppIndigo)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            question.subjectName?.takeIf { it.isNotBlank() }?.let { ChipText(it, AppBlue) }
+                            question.topicName?.takeIf { it.isNotBlank() }?.let { ChipText(it, AppLilac) }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            question.type?.let { ChipText(it, AppAmber) }
+                            question.difficulty?.let {
+                                ChipText(
+                                    it,
+                                    when (it) {
+                                        Difficulty.EASY.name -> AppMint
+                                        Difficulty.HARD.name -> AppRed
+                                        else -> AppAmber
+                                    }
+                                )
+                            }
+                        }
+                        val answers = question.answers.orEmpty()
+                        if (answers.isNotEmpty()) {
+                            Spacer(Modifier.height(10.dp))
+                            answers.forEachIndexed { index, answer ->
+                                val label = ('A' + index).toString()
+                                val prefix = if (answer.correct == true) "Correct: " else ""
+                                Text(
+                                    "$label. $prefix${answer.content}",
+                                    color = if (answer.correct == true) AppMint else AppMuted,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { onEdit(question) },
+                                modifier = Modifier.weight(1f),
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Edit")
+                            }
+                            OutlinedButton(
+                                onClick = { deleteQuestion(question) },
+                                modifier = Modifier.weight(1f),
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Text("Delete")
+                            }
                         }
                     }
                 }
@@ -579,6 +674,8 @@ fun QuestionBankScreen(onCreate: () -> Unit, onBack: () -> Unit) {
 
 @Composable
 fun CreateQuestionScreen(onBack: () -> Unit) {
+    val selectedExam = ExamAttemptStore.selectedExam.value
+    val isBankMode = selectedExam == null
     var type by remember { mutableStateOf(QuestionType.SINGLE) }
     var difficulty by remember { mutableStateOf(Difficulty.MEDIUM) }
     var content by remember { mutableStateOf("") }
@@ -673,8 +770,6 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
     fun saveQuestion() {
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) { message = "Please sign in again."; return }
-        val selectedExam = ExamAttemptStore.selectedExam.value
-        if (selectedExam == null) { message = "Select an exam before creating questions."; return }
         if (content.isBlank()) { message = "Question content is required."; return }
         val subject = selectedSubject
         if (subject == null) { message = "Select a subject before saving."; return }
@@ -696,39 +791,77 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
         scope.launch {
             loading = true; message = null
             try {
-                val response = ApiClient.createQuestionForExam(
-                    authorization,
-                    selectedExam.id,
-                    ExamQuestionCreateRequest(
-                        subjectId = subject.id,
-                        topicId = selectedTopic?.id,
-                        content = content.trim(),
-                        type = type.name,
-                        difficulty = difficulty.name,
-                        orderIndex = null,
-                        score = null,
-                        answers = answerEntries.map { (label, answer) ->
-                            AnswerCreateRequest(
-                                content = answer.trim(),
-                                correct = label in selectedCorrect,
-                                explanation = if (label in selectedCorrect) explanation.ifBlank { null } else null
-                            )
-                        }
+                if (isBankMode) {
+                    val response = ApiClient.createQuestion(
+                        authorization,
+                        QuestionCreateRequest(
+                            subjectId = subject.id,
+                            topicId = selectedTopic?.id,
+                            content = content.trim(),
+                            type = type.name,
+                            difficulty = difficulty.name,
+                            answers = answerEntries.map { (label, answer) ->
+                                AnswerCreateRequest(
+                                    content = answer.trim(),
+                                    correct = label in selectedCorrect,
+                                    explanation = if (label in selectedCorrect) explanation.ifBlank { null } else null
+                                )
+                            }
+                        )
                     )
-                )
-                if (response.success) {
-                    type = QuestionType.SINGLE
-                    difficulty = Difficulty.MEDIUM
-                    content = ""
-                    answerA = ""
-                    answerB = ""
-                    answerC = ""
-                    answerD = ""
-                    correctAnswers = setOf("A")
-                    explanation = ""
-                    message = "Question added to ${selectedExam.title}"
+                    if (response.success) {
+                        type = QuestionType.SINGLE
+                        difficulty = Difficulty.MEDIUM
+                        content = ""
+                        answerA = ""
+                        answerB = ""
+                        answerC = ""
+                        answerD = ""
+                        correctAnswers = setOf("A")
+                        explanation = ""
+                        message = "Question created in bank."
+                    } else {
+                        message = response.message
+                    }
                 } else {
-                    message = response.message
+                    val exam = selectedExam ?: run {
+                        message = "Select an exam before creating questions."
+                        return@launch
+                    }
+                    val response = ApiClient.createQuestionForExam(
+                        authorization,
+                        exam.id,
+                        ExamQuestionCreateRequest(
+                            subjectId = subject.id,
+                            topicId = selectedTopic?.id,
+                            content = content.trim(),
+                            type = type.name,
+                            difficulty = difficulty.name,
+                            orderIndex = null,
+                            score = null,
+                            answers = answerEntries.map { (label, answer) ->
+                                AnswerCreateRequest(
+                                    content = answer.trim(),
+                                    correct = label in selectedCorrect,
+                                    explanation = if (label in selectedCorrect) explanation.ifBlank { null } else null
+                                )
+                            }
+                        )
+                    )
+                    if (response.success) {
+                        type = QuestionType.SINGLE
+                        difficulty = Difficulty.MEDIUM
+                        content = ""
+                        answerA = ""
+                        answerB = ""
+                        answerC = ""
+                        answerD = ""
+                        correctAnswers = setOf("A")
+                        explanation = ""
+                        message = "Question added to ${exam.title}"
+                    } else {
+                        message = response.message
+                    }
                 }
             } catch (exception: HttpException) { message = "Cannot save question. Please check your account permission." }
             catch (exception: Exception) { message = "Cannot save question right now." }
@@ -740,10 +873,13 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
         ExamTopBar("Create Question", onBack)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
             item {
-                val selectedExam = ExamAttemptStore.selectedExam.value
                 InfoBanner(
-                    selectedExam?.let { "Adding question to exam: ${it.title}" } ?: "No exam selected. Open an exam before adding questions.",
-                    if (selectedExam != null) AppMint else AppAmber,
+                    if (isBankMode) {
+                        "Question bank mode. This question will be reusable across exams."
+                    } else {
+                        "Adding question to exam: ${selectedExam?.title}"
+                    },
+                    if (isBankMode) AppBlue else AppMint,
                     Icons.Default.Info
                 )
 
@@ -947,28 +1083,35 @@ private fun AnswerOptionInput(
 @Composable
 fun EditQuestionScreen(onBack: () -> Unit) {
     val exam = ExamAttemptStore.selectedExam.value
-    val question = ExamAttemptStore.selectedQuestion.value
-    var type by remember(question?.questionId) { mutableStateOf(question?.type?.let { runCatching { QuestionType.valueOf(it) }.getOrNull() } ?: QuestionType.SINGLE) }
-    var difficulty by remember(question?.questionId) { mutableStateOf(question?.difficulty?.let { runCatching { Difficulty.valueOf(it) }.getOrNull() } ?: Difficulty.MEDIUM) }
-    var content by remember(question?.questionId) { mutableStateOf(question?.content.orEmpty()) }
+    val examQuestion = ExamAttemptStore.selectedQuestion.value
+    val bankQuestion = ExamAttemptStore.selectedBankQuestion.value
+    val isBankMode = bankQuestion != null && examQuestion == null
+    val stateKey = examQuestion?.questionId ?: bankQuestion?.id
+    val initialType = examQuestion?.type ?: bankQuestion?.type
+    val initialDifficulty = examQuestion?.difficulty ?: bankQuestion?.difficulty
+    val initialContent = examQuestion?.content ?: bankQuestion?.content.orEmpty()
+    val initialSubjectId = examQuestion?.subjectId ?: bankQuestion?.subjectId
+    val initialTopicId = examQuestion?.topicId ?: bankQuestion?.topicId
+    val existingAnswers = examQuestion?.answers ?: bankQuestion?.answers.orEmpty()
+    var type by remember(stateKey) { mutableStateOf(initialType?.let { runCatching { QuestionType.valueOf(it) }.getOrNull() } ?: QuestionType.SINGLE) }
+    var difficulty by remember(stateKey) { mutableStateOf(initialDifficulty?.let { runCatching { Difficulty.valueOf(it) }.getOrNull() } ?: Difficulty.MEDIUM) }
+    var content by remember(stateKey) { mutableStateOf(initialContent) }
     var subjects by remember { mutableStateOf<List<SubjectResponse>>(emptyList()) }
     var topics by remember { mutableStateOf<List<TopicResponse>>(emptyList()) }
     var selectedSubject by remember { mutableStateOf<SubjectResponse?>(null) }
     var selectedTopic by remember { mutableStateOf<TopicResponse?>(null) }
-    val existingAnswers = question?.answers.orEmpty()
-    var answerA by remember(question?.questionId) { mutableStateOf(existingAnswers.getOrNull(0)?.content.orEmpty()) }
-    var answerB by remember(question?.questionId) { mutableStateOf(existingAnswers.getOrNull(1)?.content.orEmpty()) }
-    var answerC by remember(question?.questionId) { mutableStateOf(existingAnswers.getOrNull(2)?.content.orEmpty()) }
-    var answerD by remember(question?.questionId) { mutableStateOf(existingAnswers.getOrNull(3)?.content.orEmpty()) }
-    var correctAnswers by remember(question?.questionId) {
+    var answerA by remember(stateKey) { mutableStateOf(existingAnswers.getOrNull(0)?.content.orEmpty()) }
+    var answerB by remember(stateKey) { mutableStateOf(existingAnswers.getOrNull(1)?.content.orEmpty()) }
+    var answerC by remember(stateKey) { mutableStateOf(existingAnswers.getOrNull(2)?.content.orEmpty()) }
+    var answerD by remember(stateKey) { mutableStateOf(existingAnswers.getOrNull(3)?.content.orEmpty()) }
+    var correctAnswers by remember(stateKey) {
         mutableStateOf(existingAnswers.mapIndexedNotNull { index, answer -> if (answer.correct == true) ('A' + index).toString() else null }.toSet().ifEmpty { setOf("A") })
     }
-    var explanation by remember(question?.questionId) { mutableStateOf(existingAnswers.firstOrNull { it.correct == true }?.explanation.orEmpty()) }
+    var explanation by remember(stateKey) { mutableStateOf(existingAnswers.firstOrNull { it.correct == true }?.explanation.orEmpty()) }
     var message by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var catalogLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val gson = remember { Gson() }
 
     LaunchedEffect(type) {
         when (type) {
@@ -1004,7 +1147,7 @@ fun EditQuestionScreen(onBack: () -> Unit) {
         try {
             val response = ApiClient.getSubjects(authorization)
             subjects = response.data.orEmpty()
-            selectedSubject = subjects.firstOrNull { it.id == question?.subjectId } ?: subjects.firstOrNull()
+            selectedSubject = subjects.firstOrNull { it.id == initialSubjectId } ?: subjects.firstOrNull()
         } catch (exception: Exception) {
             message = "Cannot load subjects right now."
         } finally {
@@ -1018,7 +1161,7 @@ fun EditQuestionScreen(onBack: () -> Unit) {
         try {
             val response = ApiClient.getTopics(authorization, subject.id)
             topics = response.data.orEmpty()
-            selectedTopic = topics.firstOrNull { it.id == question?.topicId }
+            selectedTopic = topics.firstOrNull { it.id == initialTopicId }
         } catch (exception: Exception) {
             topics = emptyList()
             selectedTopic = null
@@ -1032,11 +1175,9 @@ fun EditQuestionScreen(onBack: () -> Unit) {
     }
 
     fun updateQuestion() {
-        val selectedExam = exam
-        val selectedQuestion = question
         val subject = selectedSubject
         val authorization = SessionManager.authorizationHeader()
-        if (selectedExam == null || selectedQuestion == null) { message = "Select a question before editing."; return }
+        if (examQuestion == null && bankQuestion == null) { message = "Select a question before editing."; return }
         if (authorization == null) { message = "Please sign in again."; return }
         if (subject == null) { message = "Select a subject before saving."; return }
         if (content.isBlank()) { message = "Question content is required."; return }
@@ -1054,32 +1195,71 @@ fun EditQuestionScreen(onBack: () -> Unit) {
         scope.launch {
             loading = true; message = null
             try {
-                val response = ApiClient.updateQuestionForExam(
-                    authorization,
-                    selectedExam.id,
-                    selectedQuestion.questionId,
-                    ExamQuestionCreateRequest(
-                        subjectId = subject.id,
-                        topicId = selectedTopic?.id,
-                        content = content.trim(),
-                        type = type.name,
-                        difficulty = difficulty.name,
-                        orderIndex = selectedQuestion.orderIndex,
-                        score = selectedQuestion.score,
-                        answers = answerEntries.map { (label, answer) ->
-                            AnswerCreateRequest(
-                                content = answer,
-                                correct = label in selectedCorrect,
-                                explanation = if (label in selectedCorrect) explanation.ifBlank { null } else null
-                            )
-                        }
+                if (isBankMode) {
+                    val selectedQuestion = bankQuestion ?: run {
+                        message = "Select a question before editing."
+                        return@launch
+                    }
+                    val response = ApiClient.updateQuestion(
+                        authorization,
+                        selectedQuestion.id,
+                        QuestionCreateRequest(
+                            subjectId = subject.id,
+                            topicId = selectedTopic?.id,
+                            content = content.trim(),
+                            type = type.name,
+                            difficulty = difficulty.name,
+                            answers = answerEntries.map { (label, answer) ->
+                                AnswerCreateRequest(
+                                    content = answer,
+                                    correct = label in selectedCorrect,
+                                    explanation = if (label in selectedCorrect) explanation.ifBlank { null } else null
+                                )
+                            }
+                        )
                     )
-                )
-                if (response.success) {
-                    response.data?.let { ExamAttemptStore.setSelectedQuestion(it) }
-                    message = "Question updated."
+                    if (response.success) {
+                        response.data?.let { ExamAttemptStore.setSelectedBankQuestion(it) }
+                        message = "Question updated."
+                    } else {
+                        message = response.message
+                    }
                 } else {
-                    message = response.message
+                    val selectedExam = exam ?: run {
+                        message = "Select an exam before editing."
+                        return@launch
+                    }
+                    val selectedQuestion = examQuestion ?: run {
+                        message = "Select a question before editing."
+                        return@launch
+                    }
+                    val response = ApiClient.updateQuestionForExam(
+                        authorization,
+                        selectedExam.id,
+                        selectedQuestion.questionId,
+                        ExamQuestionCreateRequest(
+                            subjectId = subject.id,
+                            topicId = selectedTopic?.id,
+                            content = content.trim(),
+                            type = type.name,
+                            difficulty = difficulty.name,
+                            orderIndex = selectedQuestion.orderIndex,
+                            score = selectedQuestion.score,
+                            answers = answerEntries.map { (label, answer) ->
+                                AnswerCreateRequest(
+                                    content = answer,
+                                    correct = label in selectedCorrect,
+                                    explanation = if (label in selectedCorrect) explanation.ifBlank { null } else null
+                                )
+                            }
+                        )
+                    )
+                    if (response.success) {
+                        response.data?.let { ExamAttemptStore.setSelectedQuestion(it) }
+                        message = "Question updated."
+                    } else {
+                        message = response.message
+                    }
                 }
             } catch (exception: HttpException) { message = "Cannot update question. Please check your account permission." }
             catch (exception: Exception) { message = "Cannot update question right now." }
@@ -1091,7 +1271,15 @@ fun EditQuestionScreen(onBack: () -> Unit) {
         ExamTopBar("Edit Question", onBack)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
             item {
-                InfoBanner(exam?.let { "Exam: ${it.title}" } ?: "No exam selected.", if (exam != null) AppMint else AppAmber, Icons.Default.Info)
+                InfoBanner(
+                    if (isBankMode) {
+                        "Question bank mode. Updating reusable question."
+                    } else {
+                        exam?.let { "Exam: ${it.title}" } ?: "No exam selected."
+                    },
+                    if (isBankMode) AppBlue else if (exam != null) AppMint else AppAmber,
+                    Icons.Default.Info
+                )
 
                 SectionTitle("Question Content")
                 OutlinedTextField(content, { content = it }, modifier = Modifier.fillMaxWidth().height(120.dp), label = { Text("Enter the question text") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
@@ -1535,7 +1723,7 @@ fun EditExamScreen(onBack: () -> Unit) {
                     )
                 )
                 if (response.success) {
-                    response.data?.let { ExamAttemptStore.setBackendExamId(it.id, it) }
+                    response.data?.let { ExamAttemptStore.selectExam(it.id, it) }
                     message = "Exam updated."
                 } else {
                     message = response.message
@@ -1645,7 +1833,9 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
         try {
             val response = ApiClient.getTopics(authorization, subject.id)
             topics = response.data.orEmpty()
-            selectedTopic = topics.firstOrNull()
+            selectedTopic = selectedTopic?.takeIf { current ->
+                topics.any { it.id == current.id }
+            }
         } catch (exception: Exception) {
             topics = emptyList()
             selectedTopic = null
@@ -1848,7 +2038,7 @@ private fun LiveMonitoringScreenLegacy(onBack: () -> Unit) {
             item { SectionTitle("Realtime Log") }
             items(MockData.auditLogs) { log ->
                 val logColor = when (log.action) { "SCREENSHOT", "APP_EXIT" -> AppRed; "LOST_CONNECTION", "FOCUS_LOST" -> AppAmber; else -> AppMuted }
-                val logIcon = when (log.action) { "SCREENSHOT" -> Icons.Default.Warning; "APP_EXIT" -> Icons.Default.ExitToApp; "LOST_CONNECTION" -> Icons.Default.WifiOff; "FOCUS_LOST" -> Icons.Default.VisibilityOff; else -> Icons.Default.Info }
+                val logIcon = when (log.action) { "SCREENSHOT" -> Icons.Default.Warning; "APP_EXIT" -> Icons.AutoMirrored.Filled.ExitToApp; "LOST_CONNECTION" -> Icons.Default.WifiOff; "FOCUS_LOST" -> Icons.Default.VisibilityOff; else -> Icons.Default.Info }
                 Card(
                     shape = MaterialTheme.shapes.large,
                     colors = CardDefaults.cardColors(containerColor = AppSurface),
@@ -2155,7 +2345,3 @@ private fun ReportDashboardScreenLegacy(onBack: () -> Unit) {
         PrimaryAction("Export Excel / PDF")
     }
 }
-
-
-
-

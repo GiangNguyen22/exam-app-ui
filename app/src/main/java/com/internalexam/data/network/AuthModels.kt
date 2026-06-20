@@ -23,12 +23,20 @@ data class QuestionCreateRequest(
     val topicId: Long?,
     val content: String,
     val type: String,
-    val difficulty: String
+    val difficulty: String,
+    val answers: List<AnswerCreateRequest>
 )
 
 data class QuestionResponse(
     val id: Long,
-    val content: String
+    val subjectId: Long?,
+    val subjectName: String?,
+    val topicId: Long?,
+    val topicName: String?,
+    val content: String,
+    val type: String?,
+    val difficulty: String?,
+    val answers: List<AnswerOptionResponse>?
 )
 
 data class SubjectResponse(

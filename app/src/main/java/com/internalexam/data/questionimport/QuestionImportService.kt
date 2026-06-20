@@ -1,6 +1,7 @@
 package com.internalexam.data.questionimport
 
 import com.internalexam.data.network.ApiClient
+import com.internalexam.data.network.AnswerCreateRequest
 import com.internalexam.data.network.QuestionCreateRequest
 import com.internalexam.data.network.SubjectResponse
 import com.internalexam.data.network.TopicResponse
@@ -46,7 +47,14 @@ object QuestionImportService {
                         topicId = topicId,
                         content = row.content,
                         type = row.type,
-                        difficulty = row.difficulty
+                        difficulty = row.difficulty,
+                        answers = listOf(
+                            AnswerCreateRequest(
+                                content = row.content,
+                                correct = true,
+                                explanation = null
+                            )
+                        )
                     )
                 )
                 if (response.success) {

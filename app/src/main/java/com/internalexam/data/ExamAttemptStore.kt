@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import com.internalexam.data.network.ExamAnswerSubmitRequest
 import com.internalexam.data.network.ExamResponse
 import com.internalexam.data.network.ExamQuestionResponse
+import com.internalexam.data.network.QuestionResponse
 import com.internalexam.model.mock.MockData
 import com.internalexam.model.mock.QuestionType
 
@@ -20,6 +21,8 @@ object ExamAttemptStore {
         private set
     var selectedQuestion = mutableStateOf<ExamQuestionResponse?>(null)
         private set
+    var selectedBankQuestion = mutableStateOf<QuestionResponse?>(null)
+        private set
 
     /** Thời điểm kết thúc bài thi (epoch millis). Được neo cố định khi vào màn làm bài
      *  để đồng hồ không bị reset khi điều hướng qua lại. */
@@ -29,6 +32,7 @@ object ExamAttemptStore {
     fun selectExam(examId: Long, exam: ExamResponse? = null) {
         backendExamId = examId
         selectedExam.value = exam
+        selectedBankQuestion.value = null
     }
 
     fun startNewAttempt(examId: Long, exam: ExamResponse? = null) {
@@ -57,6 +61,28 @@ object ExamAttemptStore {
 
     fun setSelectedQuestion(question: ExamQuestionResponse?) {
         selectedQuestion.value = question
+        if (question != null) {
+            selectedBankQuestion.value = null
+        }
+    }
+
+    fun setSelectedBankQuestion(question: QuestionResponse?) {
+        selectedBankQuestion.value = question
+        if (question != null) {
+            selectedQuestion.value = null
+        }
+    }
+
+    fun clearExamContext() {
+        backendExamId = 1L
+        selectedExam.value = null
+        backendQuestions.value = emptyList()
+        selectedQuestion.value = null
+    }
+
+    fun clearQuestionSelections() {
+        selectedQuestion.value = null
+        selectedBankQuestion.value = null
     }
 
     fun usingBackendQuestions(): Boolean {

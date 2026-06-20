@@ -31,6 +31,18 @@ object ApiClient {
         return callBackend { it.createQuestion(authorization, request) }
     }
 
+    suspend fun updateQuestion(
+        authorization: String,
+        questionId: Long,
+        request: QuestionCreateRequest
+    ): ApiResponse<QuestionResponse> {
+        return callBackend { it.updateQuestion(authorization, questionId, request) }
+    }
+
+    suspend fun deleteQuestion(authorization: String, questionId: Long): ApiResponse<String> {
+        return callBackend { it.deleteQuestion(authorization, questionId) }
+    }
+
     suspend fun importQuestions(authorization: String, fileName: String, fileBytes: ByteArray): ApiResponse<QuestionImportResponse> {
         return callBackend {
             val body = fileBytes.toRequestBody("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".toMediaType())

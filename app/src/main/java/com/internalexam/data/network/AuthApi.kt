@@ -9,6 +9,7 @@ import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.DELETE
 
 interface AuthApi {
     @POST("api/auth/login")
@@ -19,6 +20,19 @@ interface AuthApi {
         @Header("Authorization") authorization: String,
         @Body request: QuestionCreateRequest
     ): ApiResponse<QuestionResponse>
+
+    @PUT("api/questions/{questionId}")
+    suspend fun updateQuestion(
+        @Header("Authorization") authorization: String,
+        @Path("questionId") questionId: Long,
+        @Body request: QuestionCreateRequest
+    ): ApiResponse<QuestionResponse>
+
+    @DELETE("api/questions/{questionId}")
+    suspend fun deleteQuestion(
+        @Header("Authorization") authorization: String,
+        @Path("questionId") questionId: Long
+    ): ApiResponse<String>
 
     @Multipart
     @POST("api/questions/import")

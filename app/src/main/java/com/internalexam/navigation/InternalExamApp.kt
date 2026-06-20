@@ -197,21 +197,35 @@ fun InternalExamApp() {
             }
             composable(Routes.Result) { ResultScreen { nav.popBackStack() } }
             composable(Routes.TeacherDashboard) { TeacherDashboardScreen({ nav.navigate(Routes.Questions) }, { nav.navigate(Routes.TeacherExams) }, { nav.navigate(Routes.GenerateExam) }, { nav.navigate(Routes.Monitor) }, { nav.navigate(Routes.Reports) }) }
-            composable(Routes.Questions) { QuestionBankScreen({ nav.navigate(Routes.CreateQuestion) }, { nav.popBackStack() }) }
+            composable(Routes.Questions) {
+                QuestionBankScreen(
+                    onCreate = {
+                        ExamAttemptStore.clearExamContext()
+                        ExamAttemptStore.clearQuestionSelections()
+                        nav.navigate(Routes.CreateQuestion)
+                    },
+                    onEdit = { question ->
+                        ExamAttemptStore.clearExamContext()
+                        ExamAttemptStore.setSelectedBankQuestion(question)
+                        nav.navigate(Routes.EditQuestion)
+                    },
+                    onBack = { nav.popBackStack() }
+                )
+            }
             composable(Routes.CreateQuestion) { CreateQuestionScreen { nav.popBackStack() } }
             composable(Routes.TeacherExams) {
                 TeacherExamListScreen(
                     onCreateExam = { nav.navigate(Routes.CreateExam) },
                     onAddQuestion = { exam ->
-                        ExamAttemptStore.setBackendExamId(exam.id, exam)
+                        ExamAttemptStore.selectExam(exam.id, exam)
                         nav.navigate(Routes.CreateQuestion)
                     },
                     onViewQuestions = { exam ->
-                        ExamAttemptStore.setBackendExamId(exam.id, exam)
+                        ExamAttemptStore.selectExam(exam.id, exam)
                         nav.navigate(Routes.ExamQuestions)
                     },
                     onEditExam = { exam ->
-                        ExamAttemptStore.setBackendExamId(exam.id, exam)
+                        ExamAttemptStore.selectExam(exam.id, exam)
                         nav.navigate(Routes.EditExam)
                     },
                     onBack = { nav.popBackStack() }
