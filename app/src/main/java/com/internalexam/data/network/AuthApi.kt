@@ -54,6 +54,12 @@ interface AuthApi {
         @Body request: ExamUpdateRequest
     ): ApiResponse<ExamResponse>
 
+    @DELETE("api/exams/{examId}")
+    suspend fun deleteExam(
+        @Header("Authorization") authorization: String,
+        @Path("examId") examId: Long
+    ): ApiResponse<String>
+
     @GET("api/exams")
     suspend fun getExams(
         @Header("Authorization") authorization: String

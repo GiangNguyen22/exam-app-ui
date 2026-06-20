@@ -2,13 +2,18 @@ package com.internalexam.data.examimport
 
 import com.internalexam.data.network.AnswerCreateRequest
 import com.internalexam.data.network.ApiClient
+import com.internalexam.data.network.ApiResponse
 import com.internalexam.data.network.ExamQuestionCreateRequest
 import com.internalexam.data.network.SubjectResponse
 import com.internalexam.data.network.TopicResponse
+import com.google.gson.Gson
 import java.text.Normalizer
 import java.util.Locale
+import retrofit2.HttpException
 
 object ExamExcelImportService {
+    private val gson = Gson()
+
     suspend fun importQuestions(
         authorization: String,
         examId: Long,
@@ -19,6 +24,12 @@ object ExamExcelImportService {
 
         val failures = mutableListOf<ExamExcelImportFailure>()
         var createdCount = 0
+        val existingQuestionKeys = runCatching {
+            ApiClient.getExamQuestions(authorization, examId).data.orEmpty().map { question ->
+                question.uniqueKey()
+            }.toMutableSet()
+        }.getOrDefault(mutableSetOf())
+        val importedKeys = mutableSetOf<String>()
         val subjects = loadSubjectsIfNeeded(authorization, rows, failures)
         val topicsBySubjectId = mutableMapOf<Long, List<TopicResponse>>()
 
@@ -39,6 +50,16 @@ object ExamExcelImportService {
             }
             if (row.topicName != null && topicId == null) {
                 failures += ExamExcelImportFailure(row.rowNumber, "Topic was not found for the selected subject.")
+                return@forEachIndexed
+            }
+
+            val rowKey = row.uniqueKey(subjectId, topicId)
+            if (!importedKeys.add(rowKey)) {
+                failures += ExamExcelImportFailure(row.rowNumber, "Duplicate row in the import file. This question was skipped.")
+                return@forEachIndexed
+            }
+            if (rowKey in existingQuestionKeys) {
+                failures += ExamExcelImportFailure(row.rowNumber, "This question already exists in the exam. It was skipped.")
                 return@forEachIndexed
             }
 
@@ -65,9 +86,19 @@ object ExamExcelImportService {
                 )
                 if (response.success) {
                     createdCount++
+                    existingQuestionKeys += rowKey
                 } else {
                     failures += ExamExcelImportFailure(row.rowNumber, response.message.ifBlank { "Backend rejected this row." })
                 }
+            } catch (exception: HttpException) {
+                val backendMessage = runCatching {
+                    val body = exception.response()?.errorBody()?.string().orEmpty()
+                    gson.fromJson(body, ApiResponse::class.java)?.message
+                }.getOrNull().orEmpty()
+                failures += ExamExcelImportFailure(
+                    row.rowNumber,
+                    backendMessage.ifBlank { "Backend rejected this row." }
+                )
             } catch (exception: Exception) {
                 failures += ExamExcelImportFailure(row.rowNumber, "Cannot add this question to the exam right now.")
             }
@@ -99,5 +130,25 @@ object ExamExcelImportService {
             .replace(Regex("\\p{Mn}+"), "")
             .replace("\u0111", "d")
             .replace(Regex("\\s+"), " ")
+    }
+
+    private fun ExamExcelQuestionRow.uniqueKey(subjectId: Long, topicId: Long?): String {
+        return listOf(
+            subjectId.toString(),
+            topicId?.toString().orEmpty(),
+            content.trim().lowercase(Locale.US),
+            type.trim().uppercase(Locale.US),
+            difficulty.trim().uppercase(Locale.US)
+        ).joinToString("|")
+    }
+
+    private fun com.internalexam.data.network.ExamQuestionResponse.uniqueKey(): String {
+        return listOf(
+            subjectId?.toString().orEmpty(),
+            topicId?.toString().orEmpty(),
+            content.trim().lowercase(Locale.US),
+            type.orEmpty().trim().uppercase(Locale.US),
+            difficulty.orEmpty().trim().uppercase(Locale.US)
+        ).joinToString("|")
     }
 }

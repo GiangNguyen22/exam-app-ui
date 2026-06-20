@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -48,6 +49,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -62,6 +64,7 @@ import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -82,6 +85,7 @@ import com.internalexam.data.examimport.ExamExcelImportService
 import com.internalexam.data.examimport.ExamExcelParser
 import com.internalexam.data.examimport.ExamExcelQuestionRow
 import com.internalexam.data.examimport.ExamExcelTemplate
+import com.internalexam.data.questionimport.QuestionExcelTemplate
 import com.internalexam.data.network.ApiClient
 import com.internalexam.data.network.AnswerCreateRequest
 import com.internalexam.data.network.ExamCreateRequest
@@ -129,6 +133,7 @@ import com.internalexam.ui.theme.BgGradient
 import com.google.gson.Gson
 import com.internalexam.data.network.ApiResponse
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
@@ -144,7 +149,32 @@ fun TeacherExamListScreen(
     var exams by remember { mutableStateOf<List<ExamResponse>>(emptyList()) }
     var message by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var pendingDeleteExam by remember { mutableStateOf<ExamResponse?>(null) }
     val selectedExam = ExamAttemptStore.selectedExam.value
+    val scope = rememberCoroutineScope()
+
+    fun deleteExam(exam: ExamResponse) {
+        scope.launch {
+            val authorization = SessionManager.authorizationHeader()
+            if (authorization == null) {
+                message = "Please sign in again."
+                return@launch
+            }
+            try {
+                val response = ApiClient.deleteExam(authorization, exam.id)
+                if (response.success) {
+                    exams = exams.filterNot { it.id == exam.id }
+                    message = if (exams.isEmpty()) "Exam deleted. No exams left." else "Exam deleted."
+                } else {
+                    message = response.message.ifBlank { "Cannot delete exam right now." }
+                }
+            } catch (exception: HttpException) {
+                message = "Cannot delete exam. Please check your account permission."
+            } catch (exception: Exception) {
+                message = "Cannot delete exam right now."
+            }
+        }
+    }
 
     LaunchedEffect(selectedExam) {
         val authorization = SessionManager.authorizationHeader()
@@ -166,6 +196,21 @@ fun TeacherExamListScreen(
     }
 
     AppBackground {
+        pendingDeleteExam?.let { exam ->
+            ConfirmActionDialog(
+                title = "Delete Exam",
+                message = "Delete exam ${exam.code}? This action cannot be undone.",
+                confirmLabel = if (isLoading) "Deleting..." else "Delete",
+                destructive = true,
+                processing = isLoading,
+                onConfirm = {
+                    pendingDeleteExam = null
+                    deleteExam(exam)
+                },
+                onDismiss = { pendingDeleteExam = null }
+            )
+        }
+
         ExamTopBar("Exams", onBack)
         SectionTitle("Exam List", "Choose an exam to add questions")
         if (message != null) {
@@ -175,7 +220,11 @@ fun TeacherExamListScreen(
         if (isLoading) {
             LoadingStateCard("Loading exams...")
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 110.dp)) {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(bottom = 20.dp)
+            ) {
                 items(exams) { exam ->
                     Card(
                         shape = MaterialTheme.shapes.large,
@@ -200,10 +249,16 @@ fun TeacherExamListScreen(
                                     Spacer(Modifier.width(4.dp))
                                     Text("Add")
                                 }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                                 OutlinedButton(onClick = { onEditExam(exam) }, modifier = Modifier.weight(1f)) {
                                     Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(4.dp))
                                     Text("Edit")
+                                }
+                                OutlinedButton(onClick = { pendingDeleteExam = exam }, modifier = Modifier.weight(1f)) {
+                                    Text("Delete")
                                 }
                             }
                         }
@@ -262,7 +317,11 @@ fun ExamQuestionListScreen(
         if (isLoading) {
             LoadingStateCard("Loading questions...")
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 110.dp)) {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(bottom = 20.dp)
+            ) {
             itemsIndexed(questions) { index, question ->
                 val displayOrder = question.orderIndex?.takeIf { it > 0 } ?: (index + 1)
                 Card(
@@ -352,12 +411,12 @@ fun TeacherDashboardScreen(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCard("Exams", examCount?.toString() ?: "--", "Available exams", AppBlue, Icons.Default.Assessment)
-                MetricCard("Alerts", "--", "No alerts", AppMuted, Icons.Default.Warning)
+                MetricCard("Exams", examCount?.toString() ?: "--", "Available exams", AppBlue, Icons.Default.Assessment, modifier = Modifier.height(108.dp))
+                MetricCard("Alerts", "--", "No alerts", AppMuted, Icons.Default.Warning, modifier = Modifier.height(108.dp))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCard("Questions", questionCount?.toString() ?: "--", "Question bank", AppViolet, Icons.Default.QuestionAnswer)
-                MetricCard("Sync", "Live", "Ready", AppMint, Icons.Default.CloudDone)
+                MetricCard("Questions", questionCount?.toString() ?: "--", "Question bank", AppViolet, Icons.Default.QuestionAnswer, modifier = Modifier.height(108.dp))
+                MetricCard("Sync", "Live", "Ready", AppMint, Icons.Default.CloudDone, modifier = Modifier.height(108.dp))
             }
         }
 
@@ -404,6 +463,68 @@ fun TeacherDashboardScreen(
     }
 }
 
+private fun calculatePointsEach(totalQuestions: Int): String {
+    if (totalQuestions <= 0) {
+        return "0.00"
+    }
+    return "%.2f".format(java.util.Locale.US, 10.0 / totalQuestions.toDouble())
+}
+
+private fun questionTypeLabel(type: QuestionType): String = when (type) {
+    QuestionType.SINGLE -> "Single Choice"
+    QuestionType.MULTI -> "Multiple Choice"
+    QuestionType.TRUE_FALSE -> "True / False"
+    QuestionType.FILL_BLANK -> "Fill Blank"
+}
+
+private fun normalizedQuestionSignature(
+    subjectId: Long?,
+    topicId: Long?,
+    content: String,
+    type: String?,
+    difficulty: String?
+): String {
+    return listOf(
+        subjectId?.toString().orEmpty(),
+        topicId?.toString().orEmpty(),
+        content.trim().lowercase(),
+        type.orEmpty().trim().uppercase(),
+        difficulty.orEmpty().trim().uppercase()
+    ).joinToString("|")
+}
+
+@Composable
+private fun ConfirmActionDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    dismissLabel: String = "Cancel",
+    destructive: Boolean = false,
+    processing: Boolean = false,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = {
+            if (!processing) {
+                onDismiss()
+            }
+        },
+        title = { Text(title) },
+        text = { Text(message, color = AppText, style = MaterialTheme.typography.bodyMedium) },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = !processing) {
+                Text(confirmLabel, color = if (destructive) AppRed else AppIndigo)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !processing) {
+                Text(dismissLabel)
+            }
+        }
+    )
+}
+
 @Composable
 fun QuestionBankScreen(
     onCreate: () -> Unit,
@@ -412,9 +533,12 @@ fun QuestionBankScreen(
 ) {
     var questions by remember { mutableStateOf<List<QuestionResponse>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
+    var debouncedSearchQuery by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var importLoading by remember { mutableStateOf(false) }
+    var templateLoading by remember { mutableStateOf(false) }
+    var pendingDeleteQuestion by remember { mutableStateOf<QuestionResponse?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -485,7 +609,12 @@ fun QuestionBankScreen(
                 val response = ApiClient.importQuestions(authorization, "questions.xlsx", fileBytes)
                 val result = response.data
                 if (response.success && result != null && result.success) {
-                    message = "Imported ${result.importedQuestions} question(s) from Excel."
+                    val skippedCount = result.errors.orEmpty().size
+                    message = if (skippedCount > 0) {
+                        "Imported ${result.importedQuestions} question(s). Skipped $skippedCount duplicate or invalid row(s)."
+                    } else {
+                        "Imported ${result.importedQuestions} question(s) from Excel."
+                    }
                     loadQuestions()
                 } else if (result != null) {
                     val sampleFailures = result.errors.orEmpty().take(3).joinToString("; ") {
@@ -508,16 +637,67 @@ fun QuestionBankScreen(
         }
     }
 
+    fun saveQuestionTemplate(uri: android.net.Uri) {
+        scope.launch {
+            templateLoading = true
+            message = null
+            try {
+                val subjectNames = mutableListOf<String>()
+                val topicNames = mutableListOf<String>()
+                val authorization = SessionManager.authorizationHeader()
+                if (authorization != null) {
+                    runCatching {
+                        val subjects = ApiClient.getSubjects(authorization).data.orEmpty()
+                        subjectNames += subjects.map { it.name }
+                        subjects.forEach { subject ->
+                            val topicsForSubject = runCatching {
+                                ApiClient.getTopics(authorization, subject.id).data.orEmpty()
+                            }.getOrDefault(emptyList())
+                            topicNames += topicsForSubject.map { it.name }
+                        }
+                    }
+                }
+
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { output ->
+                        output.write(
+                            QuestionExcelTemplate.createBytes(
+                                subjectNames = subjectNames,
+                                topicNames = topicNames
+                            )
+                        )
+                    } ?: error("Cannot open output stream")
+                }
+                message = "Question import template saved."
+            } catch (exception: Exception) {
+                message = "Cannot save question import template."
+            } finally {
+                templateLoading = false
+            }
+        }
+    }
+
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importQuestionsFromExcel(uri)
+    }
+
+    val templateLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    ) { uri ->
+        if (uri != null) saveQuestionTemplate(uri)
     }
 
     LaunchedEffect(Unit) {
         loadQuestions()
     }
 
-    val filteredQuestions = remember(questions, searchQuery) {
-        val query = searchQuery.trim()
+    LaunchedEffect(searchQuery) {
+        delay(250)
+        debouncedSearchQuery = searchQuery
+    }
+
+    val filteredQuestions = remember(questions, debouncedSearchQuery) {
+        val query = debouncedSearchQuery.trim()
         if (query.isBlank()) {
             questions
         } else {
@@ -534,6 +714,21 @@ fun QuestionBankScreen(
     }
 
     AppBackground {
+        pendingDeleteQuestion?.let { question ->
+            ConfirmActionDialog(
+                title = "Delete Question",
+                message = "Delete question ID ${question.id}? This action cannot be undone.",
+                confirmLabel = if (isLoading) "Deleting..." else "Delete",
+                destructive = true,
+                processing = isLoading,
+                onConfirm = {
+                    pendingDeleteQuestion = null
+                    deleteQuestion(question)
+                },
+                onDismiss = { pendingDeleteQuestion = null }
+            )
+        }
+
         ExamTopBar("Question Bank", onBack)
 
         OutlinedTextField(
@@ -563,13 +758,17 @@ fun QuestionBankScreen(
             Spacer(Modifier.height(12.dp))
         }
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 90.dp)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 20.dp)
+        ) {
             if (isLoading) {
                 item {
                     LoadingStateCard("Loading questions...")
                 }
             }
-            if (filteredQuestions.isEmpty() && searchQuery.isNotBlank()) {
+            if (filteredQuestions.isEmpty() && debouncedSearchQuery.isNotBlank()) {
                 item {
                     InfoBanner("No matching questions.", AppAmber, Icons.Default.Info)
                 }
@@ -631,7 +830,7 @@ fun QuestionBankScreen(
                                 Text("Edit")
                             }
                             OutlinedButton(
-                                onClick = { deleteQuestion(question) },
+                                onClick = { pendingDeleteQuestion = question },
                                 modifier = Modifier.weight(1f),
                                 shape = MaterialTheme.shapes.medium
                             ) {
@@ -668,6 +867,19 @@ fun QuestionBankScreen(
                 Spacer(Modifier.width(6.dp))
                 Text(if (importLoading) "Importing..." else "Import")
             }
+        }
+        Spacer(Modifier.height(10.dp))
+        OutlinedButton(
+            onClick = { templateLauncher.launch("question-import-template.xlsx") },
+            enabled = !templateLoading,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            shape = MaterialTheme.shapes.medium
+        ) {
+            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(if (templateLoading) "Saving..." else "Download Import Template")
         }
     }
 }
@@ -754,7 +966,9 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
             val response = ApiClient.getTopics(authorization, subject.id)
             if (response.success) {
                 topics = response.data.orEmpty()
-                selectedTopic = response.data.orEmpty().firstOrNull()
+                selectedTopic = selectedTopic?.takeIf { current ->
+                    response.data.orEmpty().any { it.id == current.id }
+                }
             } else {
                 topics = emptyList()
                 selectedTopic = null
@@ -871,7 +1085,11 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
 
     AppBackground {
         ExamTopBar("Create Question", onBack)
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 32.dp)
+        ) {
             item {
                 InfoBanner(
                     if (isBankMode) {
@@ -942,8 +1160,21 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 Text("Question Type", color = AppMuted, style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    QuestionType.entries.forEach { FilterChip(selected = type == it, onClick = { type = it }, label = { Text(it.name) }, shape = MaterialTheme.shapes.small) }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    QuestionType.entries.chunked(2).forEach { rowItems ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            rowItems.forEach { item ->
+                                FilterChip(
+                                    selected = type == item,
+                                    onClick = { type = item },
+                                    label = { Text(questionTypeLabel(item)) },
+                                    shape = MaterialTheme.shapes.small,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            repeat(2 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
                 }
 
                 SectionTitle("Answer Options")
@@ -1111,6 +1342,7 @@ fun EditQuestionScreen(onBack: () -> Unit) {
     var message by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var catalogLoading by remember { mutableStateOf(false) }
+    var showUpdateConfirm by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(type) {
@@ -1161,7 +1393,9 @@ fun EditQuestionScreen(onBack: () -> Unit) {
         try {
             val response = ApiClient.getTopics(authorization, subject.id)
             topics = response.data.orEmpty()
-            selectedTopic = topics.firstOrNull { it.id == initialTopicId }
+            selectedTopic = selectedTopic?.takeIf { current ->
+                topics.any { it.id == current.id }
+            } ?: topics.firstOrNull { it.id == initialTopicId }
         } catch (exception: Exception) {
             topics = emptyList()
             selectedTopic = null
@@ -1268,8 +1502,26 @@ fun EditQuestionScreen(onBack: () -> Unit) {
     }
 
     AppBackground {
+        if (showUpdateConfirm) {
+            ConfirmActionDialog(
+                title = "Update Question",
+                message = "Save changes to this question?",
+                confirmLabel = if (loading) "Saving..." else "Save",
+                processing = loading,
+                onConfirm = {
+                    showUpdateConfirm = false
+                    updateQuestion()
+                },
+                onDismiss = { showUpdateConfirm = false }
+            )
+        }
+
         ExamTopBar("Edit Question", onBack)
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 32.dp)
+        ) {
             item {
                 InfoBanner(
                     if (isBankMode) {
@@ -1320,8 +1572,21 @@ fun EditQuestionScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 Text("Question Type", color = AppMuted, style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    QuestionType.entries.forEach { qType -> FilterChip(selected = type == qType, onClick = { type = qType }, label = { Text(qType.name) }, shape = MaterialTheme.shapes.small) }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    QuestionType.entries.chunked(2).forEach { rowItems ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            rowItems.forEach { qType ->
+                                FilterChip(
+                                    selected = type == qType,
+                                    onClick = { type = qType },
+                                    label = { Text(questionTypeLabel(qType)) },
+                                    shape = MaterialTheme.shapes.small,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            repeat(2 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
                 }
 
                 SectionTitle("Answer Options")
@@ -1349,7 +1614,7 @@ fun EditQuestionScreen(onBack: () -> Unit) {
                     InfoBanner(message.orEmpty(), if (message.orEmpty().startsWith("Question updated")) AppMint else AppRed, if (message.orEmpty().startsWith("Question updated")) Icons.Default.CheckCircle else Icons.Default.ErrorOutline)
                 }
                 Spacer(Modifier.height(14.dp))
-                PrimaryAction(if (loading) "Saving..." else "Save Changes") { if (!loading) updateQuestion() }
+                PrimaryAction(if (loading) "Saving..." else "Save Changes") { if (!loading) showUpdateConfirm = true }
             }
         }
     }
@@ -1415,12 +1680,11 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
     var randomQuestion by remember { mutableStateOf(true) }
     var randomAnswer by remember { mutableStateOf(true) }
     var title by remember { mutableStateOf("Android Practice Exam") }
-    var subject by remember { mutableStateOf("Android") }
     var duration by remember { mutableStateOf("45") }
     var openTime by remember { mutableStateOf("") }
     var closeTime by remember { mutableStateOf("") }
     var questionCount by remember { mutableStateOf("30") }
-    var points by remember { mutableStateOf("0.33") }
+    var points by remember { mutableStateOf(calculatePointsEach(30)) }
     var message by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var excelRows by remember { mutableStateOf<List<ExamExcelQuestionRow>>(emptyList()) }
@@ -1428,6 +1692,7 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
     var excelParseErrors by remember { mutableStateOf(emptyList<String>()) }
     var templateLoading by remember { mutableStateOf(false) }
     var excelLoading by remember { mutableStateOf(false) }
+    var showExcelConfirm by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val gson = remember { Gson() }
@@ -1447,18 +1712,26 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                 }
 
                 excelRows = result.rows
-                excelFileLabel = "Selected Excel: ${result.rows.size} valid question(s)"
+                excelFileLabel = if (result.rows.isNotEmpty()) {
+                    "Selected Exam Excel: ${result.rows.size} valid question(s)"
+                } else {
+                    null
+                }
                 questionCount = result.rows.size.takeIf { it > 0 }?.toString() ?: questionCount
                 excelParseErrors = result.failures.take(5).map { "row ${it.rowNumber}: ${it.message}" }
                 message = when {
-                    result.rows.isNotEmpty() && result.failures.isEmpty() -> "Loaded ${result.rows.size} question(s) from Excel."
+                    result.rows.isNotEmpty() && result.failures.isEmpty() -> {
+                        showExcelConfirm = true
+                        "Exam Excel is valid. Review and confirm exam creation."
+                    }
                     result.rows.isNotEmpty() -> "Loaded ${result.rows.size} question(s); ${result.failures.size} row(s) need review."
-                    else -> "No valid questions found in the selected Excel file."
+                    else -> result.failures.firstOrNull()?.message ?: "The selected file is not a valid Exam Excel file."
                 }
             } catch (exception: Exception) {
                 excelRows = emptyList()
                 excelFileLabel = null
                 excelParseErrors = emptyList()
+                showExcelConfirm = false
                 message = "Cannot read the selected Excel file."
             } finally {
                 excelLoading = false
@@ -1518,6 +1791,11 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
         if (uri != null) saveTemplate(uri)
     }
 
+    LaunchedEffect(questionCount) {
+        val totalQuestions = questionCount.toIntOrNull() ?: 0
+        points = calculatePointsEach(totalQuestions)
+    }
+
     fun saveExam() {
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) { message = "Please sign in again."; return }
@@ -1548,6 +1826,13 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                     )
                     message = if (importResult.failures.isEmpty()) {
                         "Exam created: ${createdExam.code}. Imported ${importResult.createdCount} question(s)."
+                    } else if (importResult.createdCount == 0) {
+                        runCatching { ApiClient.deleteExam(authorization, createdExam.id) }
+                        val sampleFailures = importResult.failures.take(3).joinToString("; ") {
+                            "row ${it.rowNumber}: ${it.message}"
+                        }
+                        val moreFailures = if (importResult.failures.size > 3) " +${importResult.failures.size - 3} more" else ""
+                        "Exam was not created because no question could be imported. Check SUBJECT/TOPIC values in the Excel file. $sampleFailures$moreFailures"
                     } else {
                         val sampleFailures = importResult.failures.take(3).joinToString("; ") {
                             "row ${it.rowNumber}: ${it.message}"
@@ -1565,13 +1850,31 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
     }
 
     AppBackground {
+        if (showExcelConfirm) {
+            ConfirmActionDialog(
+                title = "Create Exam From Excel",
+                message = "Imported file is valid with ${excelRows.size} question(s). Create the exam now?",
+                confirmLabel = if (loading) "Creating..." else "Create Exam",
+                processing = loading,
+                onConfirm = {
+                    showExcelConfirm = false
+                    saveExam()
+                },
+                onDismiss = { showExcelConfirm = false }
+            )
+        }
+
         ExamTopBar("Create Exam", onBack)
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 32.dp)
+        ) {
             item {
                 SectionTitle("Exam Details")
                 OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Exam title") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(subject, { subject = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Subject") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                InfoBanner("Questions imported from Excel use SUBJECT and TOPIC values inside the file. The exam itself does not use a separate subject field.", AppBlue, Icons.Default.Info)
 
                 SectionTitle("Timing")
                 OutlinedTextField(duration, { duration = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Duration (minutes)") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
@@ -1584,10 +1887,26 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                 SectionTitle("Scoring")
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(questionCount, { questionCount = it }, modifier = Modifier.weight(1f), label = { Text("Questions") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
-                    OutlinedTextField(points, { points = it }, modifier = Modifier.weight(1f), label = { Text("Points each") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                    OutlinedTextField(
+                        value = points,
+                        onValueChange = {},
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Points each") },
+                        enabled = false,
+                        readOnly = true,
+                        shape = MaterialTheme.shapes.medium
+                    )
                 }
+                Spacer(Modifier.height(8.dp))
+                InfoBanner("Total exam score is fixed at 10.0. Points each question are calculated automatically.", AppBlue, Icons.Default.Info)
 
                 SectionTitle("Excel Import")
+                InfoBanner(
+                    "This screen expects the Exam Excel format. Question Bank Excel files will not work here.",
+                    AppBlue,
+                    Icons.Default.Info
+                )
+                Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(
                         onClick = { templateLauncher.launch("exam-template.xlsx") },
@@ -1611,7 +1930,7 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                     ) {
                         Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(if (excelLoading) "Reading..." else "Choose Excel")
+                        Text(if (excelLoading) "Reading..." else "Choose Exam Excel")
                     }
                 }
                 excelFileLabel?.let {
@@ -1695,6 +2014,7 @@ fun EditExamScreen(onBack: () -> Unit) {
     var points by remember(exam?.id) { mutableStateOf(exam?.scorePerQuestion ?: "1.0") }
     var message by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
+    var showUpdateConfirm by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val gson = remember { Gson() }
 
@@ -1735,8 +2055,26 @@ fun EditExamScreen(onBack: () -> Unit) {
     }
 
     AppBackground {
+        if (showUpdateConfirm) {
+            ConfirmActionDialog(
+                title = "Update Exam",
+                message = "Save changes to this exam?",
+                confirmLabel = if (loading) "Saving..." else "Save",
+                processing = loading,
+                onConfirm = {
+                    showUpdateConfirm = false
+                    updateExam()
+                },
+                onDismiss = { showUpdateConfirm = false }
+            )
+        }
+
         ExamTopBar("Edit Exam", onBack)
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 32.dp)
+        ) {
             item {
                 InfoBanner(
                     exam?.let { "Editing exam: ${it.code}" } ?: "No exam selected.",
@@ -1780,7 +2118,7 @@ fun EditExamScreen(onBack: () -> Unit) {
                 }
 
                 Spacer(Modifier.height(14.dp))
-                PrimaryAction(if (loading) "Saving..." else "Save Changes") { if (!loading) updateExam() }
+                PrimaryAction(if (loading) "Saving..." else "Save Changes") { if (!loading) showUpdateConfirm = true }
             }
         }
     }
@@ -1797,7 +2135,7 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
     var medium by remember { mutableStateOf("15") }
     var hard by remember { mutableStateOf("5") }
     var duration by remember { mutableStateOf("45") }
-    var points by remember { mutableStateOf("0.33") }
+    var points by remember { mutableStateOf(calculatePointsEach(30)) }
     var message by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var catalogLoading by remember { mutableStateOf(false) }
@@ -1841,6 +2179,11 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
             selectedTopic = null
             message = "Cannot load topics right now."
         }
+    }
+
+    LaunchedEffect(easy, medium, hard) {
+        val totalQuestions = (easy.toIntOrNull() ?: 0) + (medium.toIntOrNull() ?: 0) + (hard.toIntOrNull() ?: 0)
+        points = calculatePointsEach(totalQuestions)
     }
 
     fun generateExam() {
@@ -1902,8 +2245,19 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(duration, { duration = it }, modifier = Modifier.weight(1f), label = { Text("Duration") }, enabled = !loading, shape = MaterialTheme.shapes.medium, singleLine = true)
-                OutlinedTextField(points, { points = it }, modifier = Modifier.weight(1f), label = { Text("Points each") }, enabled = !loading, shape = MaterialTheme.shapes.medium, singleLine = true)
+                OutlinedTextField(
+                    value = points,
+                    onValueChange = {},
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Points each") },
+                    enabled = false,
+                    readOnly = true,
+                    shape = MaterialTheme.shapes.medium,
+                    singleLine = true
+                )
             }
+            Spacer(Modifier.height(8.dp))
+            InfoBanner("Total exam score is fixed at 10.0. Points each question are calculated automatically.", AppBlue, Icons.Default.Info)
 
             SectionTitle("Classification")
             CatalogDropdown(

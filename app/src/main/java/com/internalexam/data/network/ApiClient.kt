@@ -59,6 +59,10 @@ object ApiClient {
         return callBackend { it.updateExam(authorization, examId, request) }
     }
 
+    suspend fun deleteExam(authorization: String, examId: Long): ApiResponse<String> {
+        return callBackend { it.deleteExam(authorization, examId) }
+    }
+
     suspend fun getExams(authorization: String): ApiResponse<List<ExamResponse>> {
         return callBackend { it.getExams(authorization) }
     }

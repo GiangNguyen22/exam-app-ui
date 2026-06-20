@@ -69,9 +69,18 @@ object ExamExcelParser {
             if (correctIndex == null) add("correct")
         }
         if (missingHeaders.isNotEmpty()) {
+            val looksLikeQuestionBankTemplate =
+                headers.contains("questionkey") &&
+                    headers.contains("answercontent") &&
+                    headers.contains("answercorrect")
+            val message = if (looksLikeQuestionBankTemplate) {
+                "This file uses Question Bank import format. Use the Exam Excel template with columns like ANSWER_A, ANSWER_B and CORRECT."
+            } else {
+                "Missing required column(s): ${missingHeaders.joinToString(", ")}."
+            }
             return ExamExcelParseResult(
                 emptyList(),
-                listOf(ExamExcelImportFailure(headerIndex + 1, "Missing required column(s): ${missingHeaders.joinToString(", ")}."))
+                listOf(ExamExcelImportFailure(headerIndex + 1, message))
             )
         }
 

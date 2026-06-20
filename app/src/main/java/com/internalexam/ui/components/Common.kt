@@ -187,12 +187,13 @@ fun MetricCard(
     value: String,
     label: String,
     color: Color = AppBlue,
-    icon: ImageVector = Icons.Default.CheckCircle
+    icon: ImageVector = Icons.Default.CheckCircle,
+    modifier: Modifier = Modifier
 ) {
     Card(
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = AppSurface),
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
     ) {
