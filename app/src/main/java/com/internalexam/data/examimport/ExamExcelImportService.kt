@@ -73,6 +73,7 @@ object ExamExcelImportService {
                         content = row.content,
                         type = row.type,
                         difficulty = row.difficulty,
+                        imageUrl = null,
                         orderIndex = row.orderIndex ?: (index + 1),
                         score = row.score ?: defaultScore,
                         answers = row.answers.map { answer ->

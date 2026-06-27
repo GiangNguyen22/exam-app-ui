@@ -141,7 +141,9 @@ fun InternalExamApp() {
             composable(Routes.StudentHome) {
                 StudentHomeScreen(
                     onLobby = { exam ->
-                        ExamAttemptStore.startNewAttempt(exam.id, exam)
+                        if (!ExamAttemptStore.hasSavedAttempt(exam.id)) {
+                            ExamAttemptStore.startNewAttempt(exam.id, exam)
+                        }
                         nav.navigate(Routes.Lobby)
                     },
                     onOpenResult = { exam ->
@@ -154,8 +156,14 @@ fun InternalExamApp() {
             composable(Routes.StudentExams) {
                 StudentExamsScreen(
                     onLobby = { exam ->
-                        ExamAttemptStore.startNewAttempt(exam.id, exam)
+                        if (!ExamAttemptStore.hasSavedAttempt(exam.id)) {
+                            ExamAttemptStore.startNewAttempt(exam.id, exam)
+                        }
                         nav.navigate(Routes.Lobby)
+                    },
+                    onOpenResult = { exam ->
+                        ExamAttemptStore.selectExam(exam.id, exam)
+                        nav.navigate(Routes.Result)
                     },
                     onBack = { nav.popBackStack() }
                 )
@@ -288,10 +296,10 @@ private fun RoleBottomBar(nav: NavHostController, current: String) {
             NavItem("Hồ sơ", Routes.Profile, Icons.Default.Person)
         )
         Role.TEACHER -> listOf(
-            NavItem("Dashboard", Routes.TeacherDashboard, Icons.Default.Dashboard),
-            NavItem("Questions", Routes.Questions, Icons.Default.QuestionAnswer),
-            NavItem("Exams", Routes.TeacherExams, Icons.Default.Quiz),
-            NavItem("Profile", Routes.Profile, Icons.Default.Person)
+            NavItem("T\u1ed5ng quan", Routes.TeacherDashboard, Icons.Default.Dashboard),
+            NavItem("C\u00e2u h\u1ecfi", Routes.Questions, Icons.Default.QuestionAnswer),
+            NavItem("\u0110\u1ec1 thi", Routes.TeacherExams, Icons.Default.Quiz),
+            NavItem("H\u1ed3 s\u01a1", Routes.Profile, Icons.Default.Person)
         )
         Role.ADMIN -> listOf(
             NavItem("Tổng quan", Routes.AdminDashboard, Icons.Default.Dashboard),

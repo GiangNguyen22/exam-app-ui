@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -57,6 +58,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -73,14 +75,18 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import com.internalexam.data.ExamAttemptStore
 import com.internalexam.data.SessionManager
 import com.internalexam.data.network.ApiClient
+import com.internalexam.monitor.AppLifecycleMonitor
+import com.internalexam.monitor.ExamEventBuffer
+import com.internalexam.monitor.NetworkMonitor
 import com.internalexam.data.network.ExamResponse
 import com.internalexam.data.network.ExamQuestionResponse
 import com.internalexam.data.network.ExamResultDetailResponse
 import com.internalexam.data.network.ExamResultResponse
-import com.internalexam.data.network.ResultQuestionResponse
 import com.internalexam.data.network.ExamSubmitRequest
 import com.internalexam.model.mock.NetworkState
 import com.internalexam.ui.components.AppBackground
@@ -130,6 +136,7 @@ fun StudentHomeScreen(
     var exams by remember { mutableStateOf<List<ExamResponse>>(emptyList()) }
     var examMetadata by remember { mutableStateOf<Map<Long, StudentExamMetadata>>(emptyMap()) }
     var recentResults by remember { mutableStateOf<List<StudentRecentResult>>(emptyList()) }
+    var submittedExamIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var loadMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var studentName by remember { mutableStateOf("Học sinh") }
@@ -203,6 +210,8 @@ fun StudentHomeScreen(
                 examMetadata = metadataDeferred.awaitAll().toMap()
                 recentResults = resultsDeferred.awaitAll().filterNotNull()
                     .sortedByDescending { it.result.submittedAt.orEmpty() }
+                val submittedIds = recentResults.filter { it.result.status == "SUBMITTED" }.map { it.exam.id }.toSet()
+                submittedExamIds = submittedIds
             }
             loadMessage = null
             networkState = NetworkState.ONLINE
@@ -250,7 +259,13 @@ fun StudentHomeScreen(
             EmptyExamState()
             } else {
             exams.forEach { exam ->
-                StudentExamRoomCard(exam, examMetadata[exam.id], onEnter = { onLobby(exam) })
+                val isSubmitted = exam.id in submittedExamIds
+                StudentExamRoomCard(
+                    exam = exam,
+                    metadata = examMetadata[exam.id],
+                    onEnter = { onLobby(exam) },
+                    onViewResult = if (isSubmitted) {{ onOpenResult(exam) }} else null
+                )
             }
         }
 
@@ -317,9 +332,10 @@ private fun EmptyExamState() {
 private fun StudentExamRoomCard(
     exam: ExamResponse,
     metadata: StudentExamMetadata?,
-    onEnter: () -> Unit
+    onEnter: () -> Unit,
+    onViewResult: (() -> Unit)? = null
 ) {
-    val canEnterExam = exam.isOpenNow()
+    val canEnterExam = exam.isOpenNow() && onViewResult == null
     Card(
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = AppSurface),
@@ -348,21 +364,34 @@ private fun StudentExamRoomCard(
                     ChipText(exam.durationLabel(), AppAmber)
                     ChipText(metadata.subjectLabel(exam), AppIndigo)
                 }
-                if (!canEnterExam) {
+                if (!canEnterExam && onViewResult == null) {
                     Spacer(Modifier.height(8.dp))
                     ChipText("Chưa mở", AppAmber)
                 }
                 Spacer(Modifier.height(14.dp))
-                Button(
-                    onClick = onEnter,
-                    enabled = canEnterExam,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    shape = MaterialTheme.shapes.medium,
-                    colors = ButtonDefaults.buttonColors(containerColor = AppIndigo)
-                ) {
-                    Text(if (canEnterExam) "Vào phòng thi" else "Chưa tới giờ mở")
+                if (onViewResult != null) {
+                    Button(
+                        onClick = onViewResult,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = ButtonDefaults.buttonColors(containerColor = AppMint)
+                    ) {
+                        Text("Xem kết quả")
+                    }
+                } else {
+                    Button(
+                        onClick = onEnter,
+                        enabled = canEnterExam,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = ButtonDefaults.buttonColors(containerColor = AppIndigo)
+                    ) {
+                        Text(if (canEnterExam) "Vào phòng thi" else "Chưa tới giờ mở")
+                    }
                 }
             }
         }
@@ -406,9 +435,10 @@ private suspend fun loadStudentExamRooms(
 }
 
 @Composable
-fun StudentExamsScreen(onLobby: (ExamResponse) -> Unit, onBack: () -> Unit) {
+fun StudentExamsScreen(onLobby: (ExamResponse) -> Unit, onOpenResult: (ExamResponse) -> Unit, onBack: () -> Unit) {
     var exams by remember { mutableStateOf<List<ExamResponse>>(emptyList()) }
     var examMetadata by remember { mutableStateOf<Map<Long, StudentExamMetadata>>(emptyMap()) }
+    var submittedExamIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var isLoading by remember { mutableStateOf(true) }
     var message by remember { mutableStateOf<String?>(null) }
 
@@ -423,6 +453,18 @@ fun StudentExamsScreen(onLobby: (ExamResponse) -> Unit, onBack: () -> Unit) {
             val (loadedExams, metadata) = loadStudentExamRooms(authorization)
             exams = loadedExams
             examMetadata = metadata
+            coroutineScope {
+                val submittedIds = loadedExams.map { exam ->
+                    async {
+                        runCatching {
+                            ApiClient.getResult(authorization, exam.id).data
+                        }.getOrNull()?.let { result ->
+                            if (result.status == "SUBMITTED") exam.id else null
+                        }
+                    }
+                }.awaitAll().filterNotNull().toSet()
+                submittedExamIds = submittedIds
+            }
             message = null
         } catch (exception: Exception) {
             message = "Không tải được đề thi lúc này."
@@ -448,7 +490,12 @@ fun StudentExamsScreen(onLobby: (ExamResponse) -> Unit, onBack: () -> Unit) {
                 EmptyExamState()
             } else {
                 exams.forEach { exam ->
-                    StudentExamRoomCard(exam, examMetadata[exam.id], onEnter = { onLobby(exam) })
+                    StudentExamRoomCard(
+                        exam = exam,
+                        metadata = examMetadata[exam.id],
+                        onEnter = { onLobby(exam) },
+                        onViewResult = if (exam.id in submittedExamIds) {{ onOpenResult(exam) }} else null
+                    )
                 }
             }
             Spacer(Modifier.height(ScreenBottomPadding))
@@ -684,7 +731,7 @@ fun ExamLobbyScreen(onStart: () -> Unit, onBack: () -> Unit) {
         GradientHero(
             exam?.title ?: "Chưa chọn đề thi",
             exam?.let { "Mã đề ${it.code}" } ?: "Vui lòng quay lại danh sách phòng thi để chọn đề."
-        ) { StatusPill(NetworkState.SYNCED) }
+        ) { StatusPill(if (NetworkMonitor.isOnline.value) NetworkState.ONLINE else NetworkState.OFFLINE) }
 
         SectionTitle("Trạng thái đề thi")
         MetricCard(
@@ -743,25 +790,25 @@ fun ExamTakingScreen(
     val progress = if (totalQuestions > 0) ExamAttemptStore.answeredCount.toFloat() / totalQuestions else 0f
 
     suspend fun submitBecauseTimeExpired() {
+        ExamEventBuffer.flush()
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) {
             loadMessage = "Hết giờ nhưng phiên đăng nhập không còn hợp lệ."
             onSubmit()
             return
         }
+        val note = "Tự động nộp bài khi hết giờ với ${ExamAttemptStore.answeredCount} câu đã trả lời."
         try {
             ApiClient.submitExam(
                 authorization,
                 ExamAttemptStore.backendExamId,
-                ExamSubmitRequest(
-                    note = "Tự động nộp bài khi hết giờ với ${ExamAttemptStore.answeredCount} câu đã trả lời.",
-                    answers = ExamAttemptStore.backendSubmitAnswers()
-                )
+                ExamSubmitRequest(note = note, answers = ExamAttemptStore.backendSubmitAnswers())
             )
             ExamAttemptStore.reset()
             onAutoSubmitted()
         } catch (exception: Exception) {
-            loadMessage = "Hết giờ. Vui lòng xác nhận nộp bài."
+            ExamAttemptStore.savePendingSubmission(ExamAttemptStore.backendExamId, note)
+            loadMessage = "Hết giờ. Bài làm đã được lưu tạm thời, sẽ tự động nộp khi có mạng."
             onSubmit()
         }
     }
@@ -813,6 +860,13 @@ fun ExamTakingScreen(
         }
     }
 
+    LaunchedEffect(ExamAttemptStore.backendExamId) {
+        AppLifecycleMonitor.start(ExamAttemptStore.backendExamId)
+    }
+    DisposableEffect(Unit) {
+        onDispose { AppLifecycleMonitor.stop() }
+    }
+
     BackHandler(enabled = !showExitConfirm) { showExitConfirm = true }
 
     AppBackground {
@@ -843,7 +897,12 @@ fun ExamTakingScreen(
                     )
                 }
             }
-            StatusPill(NetworkState.SYNCED)
+            StatusPill(if (NetworkMonitor.isOnline.value) NetworkState.ONLINE else NetworkState.OFFLINE)
+        }
+
+        if (!NetworkMonitor.isOnline.value) {
+            Spacer(Modifier.height(6.dp))
+            InfoBanner("Mất kết nối mạng. Đáp án vẫn được lưu trên thiết bị.", AppRed, Icons.Default.WifiOff)
         }
 
         Spacer(Modifier.height(10.dp))
@@ -890,6 +949,15 @@ fun ExamTakingScreen(
                             }
                             Spacer(Modifier.height(14.dp))
                             Text(question.content, style = MaterialTheme.typography.titleLarge)
+                            if (question.imageUrl != null) {
+                                Spacer(Modifier.height(12.dp))
+                                AsyncImage(
+                                    model = question.imageUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxWidth().heightIn(max = 250.dp).clip(MaterialTheme.shapes.medium),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
                             Spacer(Modifier.height(16.dp))
 
                             if (question.type == "FILL_BLANK") {
@@ -1043,18 +1111,17 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     fun submit() {
+        ExamEventBuffer.flush()
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) { message = "Vui lòng đăng nhập lại."; return }
         scope.launch {
             loading = true; message = null
+            val note = "Nộp từ ứng dụng Android với ${ExamAttemptStore.answeredCount} câu đã trả lời."
             try {
                 ApiClient.submitExam(
                     authorization,
                     ExamAttemptStore.backendExamId,
-                    ExamSubmitRequest(
-                        note = "Nộp từ ứng dụng Android với ${ExamAttemptStore.answeredCount} câu đã trả lời.",
-                        answers = ExamAttemptStore.backendSubmitAnswers()
-                    )
+                    ExamSubmitRequest(note = note, answers = ExamAttemptStore.backendSubmitAnswers())
                 )
                 ExamAttemptStore.reset()
                 onConfirm()
@@ -1062,10 +1129,32 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
                 message = when (exception.code()) {
                     404 -> "Không tìm thấy đề thi này."
                     401, 403 -> "Bạn không có quyền nộp bài thi này."
-                    else -> "Chưa thể nộp bài lúc này."
+                    else -> "Chưa thể nộp bài lúc này. Bài làm đã được lưu tạm thời."
                 }
+                ExamAttemptStore.savePendingSubmission(ExamAttemptStore.backendExamId, note)
             } catch (exception: Exception) {
-                message = "Chưa thể nộp bài lúc này."
+                ExamAttemptStore.savePendingSubmission(ExamAttemptStore.backendExamId, note)
+                message = "Mất kết nối. Bài làm đã được lưu tạm thời, sẽ tự động nộp khi có mạng."
+            } finally { loading = false }
+        }
+    }
+
+    fun retryPending() {
+        val pending = ExamAttemptStore.getPendingSubmission() ?: return
+        val authorization = SessionManager.authorizationHeader() ?: return
+        scope.launch {
+            loading = true; message = null
+            try {
+                ApiClient.submitExam(
+                    authorization,
+                    pending.examId,
+                    ExamSubmitRequest(note = pending.note, answers = ExamAttemptStore.backendSubmitAnswers())
+                )
+                ExamAttemptStore.clearPendingSubmission()
+                ExamAttemptStore.reset()
+                onConfirm()
+            } catch (exception: Exception) {
+                message = "Chưa thể kết nối. Bài làm vẫn được giữ, thử lại sau."
             } finally { loading = false }
         }
     }
@@ -1108,7 +1197,11 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(14.dp))
-        InfoBanner("Sau khi nộp bài, bạn không thể chỉnh sửa đáp án. Hãy kiểm tra lại trước khi xác nhận.", AppAmber, Icons.Default.Warning)
+        if (ExamAttemptStore.hasPendingSubmission()) {
+            InfoBanner("Bài làm chưa được gửi lên hệ thống do mất kết nối.", AppRed, Icons.Default.Warning)
+        } else {
+            InfoBanner("Sau khi nộp bài, bạn không thể chỉnh sửa đáp án. Hãy kiểm tra lại trước khi xác nhận.", AppAmber, Icons.Default.Warning)
+        }
         if (message != null) {
             Spacer(Modifier.height(10.dp))
             InfoBanner(message.orEmpty(), AppRed, Icons.Default.ErrorOutline)
@@ -1116,9 +1209,11 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
 
         Spacer(Modifier.weight(1f))
         PrimaryAction(
-            if (loading) "Đang nộp bài..." else "Nộp bài",
+            if (loading) "Đang nộp bài..." else if (ExamAttemptStore.hasPendingSubmission()) "Thử lại" else "Nộp bài",
             enabled = !loading,
-            onClick = { showConfirm = true }
+            onClick = {
+                if (ExamAttemptStore.hasPendingSubmission()) retryPending() else showConfirm = true
+            }
         )
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = onBack, modifier = Modifier
@@ -1210,12 +1305,6 @@ fun ResultScreen(onBack: () -> Unit) {
                 ) {
                     Text(detail?.score ?: "--", color = Color.White, style = MaterialTheme.typography.displayLarge)
                     Text(examTitle, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                        ResultStat(detail?.correctCount, "Đúng", AppMint)
-                        ResultStat(detail?.wrongCount, "Sai", AppCoral)
-                        ResultStat(detail?.blankCount, "Bỏ trống", AppAmber)
-                    }
                 }
             }
         }
@@ -1241,91 +1330,7 @@ fun ResultScreen(onBack: () -> Unit) {
                     Text("Nộp lúc: ${resultDate(detail?.submittedAt)}", color = AppMuted)
                 }
             }
-
-            SectionTitle("Chi tiết đáp án")
-            val questions = detail?.questions.orEmpty()
-            if (questions.isEmpty()) {
-                if (!isLoading) InfoBanner("Chưa có chi tiết đáp án.", AppAmber, Icons.Default.Info)
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    questions.forEach { question ->
-                        ResultQuestionCard(question)
-                    }
-                }
-            }
             Spacer(Modifier.height(ScreenBottomPadding))
-        }
-    }
-}
-
-@Composable
-private fun ResultStat(value: Int?, label: String, color: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text((value ?: 0).toString(), color = color, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-        Text(label, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
-    }
-}
-
-@Composable
-private fun ResultQuestionCard(question: ResultQuestionResponse) {
-    val answers = question.answers.orEmpty()
-    val isBlank = question.blank == true
-    val isCorrect = question.correct == true
-    val statusColor = when {
-        isBlank -> AppMuted
-        isCorrect -> AppMint
-        else -> AppRed
-    }
-    val selectedIds = question.selectedAnswerIds.orEmpty().toSet()
-    val yourAnswer = if (question.type == "FILL_BLANK") {
-        question.fillContent?.takeIf { it.isNotBlank() } ?: "Chưa trả lời"
-    } else {
-        val selected = answers.filter { it.id in selectedIds }.map { it.content }
-        if (selected.isEmpty()) "Chưa trả lời" else selected.joinToString()
-    }
-    val correctAnswer = answers.filter { it.correct == true }.map { it.content }
-        .let { if (it.isEmpty()) "--" else it.joinToString() }
-
-    Card(
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = AppSurface),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, statusColor.copy(alpha = 0.3f), MaterialTheme.shapes.large)
-    ) {
-        Row(Modifier.height(IntrinsicSize.Min)) {
-            Box(
-                Modifier
-                    .width(4.dp)
-                    .fillMaxHeight()
-                    .background(statusColor)
-            )
-            Column(Modifier.padding(16.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(
-                        question.content,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    ChipText(
-                        when {
-                            isBlank -> "Bỏ trống"
-                            isCorrect -> "Đúng"
-                            else -> "Sai"
-                        },
-                        statusColor
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                Text("Bạn chọn: $yourAnswer", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
-                Text("Đáp án đúng: $correctAnswer", color = AppMint, style = MaterialTheme.typography.bodyMedium)
-                val explanation = answers.firstNotNullOfOrNull { it.explanation?.takeIf { exp -> exp.isNotBlank() } }
-                if (explanation != null) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(explanation, color = AppMuted, style = MaterialTheme.typography.labelMedium)
-                }
-            }
         }
     }
 }

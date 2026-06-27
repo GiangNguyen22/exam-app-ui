@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,13 +32,17 @@ import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.QuestionAnswer
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -49,7 +54,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -63,11 +71,17 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.TimePickerDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -79,6 +93,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import com.internalexam.data.SessionManager
 import com.internalexam.data.ExamAttemptStore
 import com.internalexam.data.examimport.ExamExcelImportService
@@ -87,6 +103,7 @@ import com.internalexam.data.examimport.ExamExcelQuestionRow
 import com.internalexam.data.examimport.ExamExcelTemplate
 import com.internalexam.data.questionimport.QuestionExcelTemplate
 import com.internalexam.data.network.ApiClient
+import com.internalexam.data.network.AuditLogResponse
 import com.internalexam.data.network.AnswerCreateRequest
 import com.internalexam.data.network.ExamCreateRequest
 import com.internalexam.data.network.ExamGenerateRequest
@@ -98,7 +115,9 @@ import com.internalexam.data.network.ExamResponse
 import com.internalexam.data.network.ExamUpdateRequest
 import com.internalexam.data.network.QuestionCreateRequest
 import com.internalexam.data.network.QuestionResponse
+import com.internalexam.data.network.SubjectCreateRequest
 import com.internalexam.data.network.SubjectResponse
+import com.internalexam.data.network.TopicCreateRequest
 import com.internalexam.data.network.TopicResponse
 import com.internalexam.model.mock.CandidateStatus
 import com.internalexam.model.mock.Difficulty
@@ -132,6 +151,11 @@ import com.internalexam.ui.theme.AppViolet
 import com.internalexam.ui.theme.BgGradient
 import com.google.gson.Gson
 import com.internalexam.data.network.ApiResponse
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -152,26 +176,31 @@ fun TeacherExamListScreen(
     var pendingDeleteExam by remember { mutableStateOf<ExamResponse?>(null) }
     val selectedExam = ExamAttemptStore.selectedExam.value
     val scope = rememberCoroutineScope()
+    val gson = remember { Gson() }
 
     fun deleteExam(exam: ExamResponse) {
         scope.launch {
             val authorization = SessionManager.authorizationHeader()
             if (authorization == null) {
-                message = "Please sign in again."
+                message = "Vui lòng đăng nhập lại."
                 return@launch
             }
             try {
                 val response = ApiClient.deleteExam(authorization, exam.id)
                 if (response.success) {
                     exams = exams.filterNot { it.id == exam.id }
-                    message = if (exams.isEmpty()) "Exam deleted. No exams left." else "Exam deleted."
+                    message = if (exams.isEmpty()) "Đã xóa đề thi. Không còn đề thi nào." else "Đã xóa đề thi."
                 } else {
-                    message = response.message.ifBlank { "Cannot delete exam right now." }
+                    message = response.message.ifBlank { "Không thể xóa đề thi lúc này." }
                 }
             } catch (exception: HttpException) {
-                message = "Cannot delete exam. Please check your account permission."
+                val backendMessage = runCatching {
+                    val body = exception.response()?.errorBody()?.string().orEmpty()
+                    gson.fromJson(body, ApiResponse::class.java)?.message
+                }.getOrNull().orEmpty()
+                message = backendMessage.ifBlank { "Không thể xóa đề thi lúc này." }
             } catch (exception: Exception) {
-                message = "Cannot delete exam right now."
+                message = "Không thể xóa đề thi lúc này."
             }
         }
     }
@@ -179,7 +208,7 @@ fun TeacherExamListScreen(
     LaunchedEffect(selectedExam) {
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) {
-            message = "Please sign in again."
+            message = "Vui lòng đăng nhập lại."
             isLoading = false
             return@LaunchedEffect
         }
@@ -187,9 +216,9 @@ fun TeacherExamListScreen(
         try {
             val response = ApiClient.getExams(authorization)
             exams = response.data.orEmpty()
-            message = if (exams.isEmpty()) "No exams found. Create an exam first." else null
+            message = if (exams.isEmpty()) "Chưa có đề thi. Hãy tạo đề thi mới." else null
         } catch (exception: Exception) {
-            message = "Cannot load exams right now."
+            message = "Không thể tải đề thi lúc này."
         } finally {
             isLoading = false
         }
@@ -198,9 +227,9 @@ fun TeacherExamListScreen(
     AppBackground {
         pendingDeleteExam?.let { exam ->
             ConfirmActionDialog(
-                title = "Delete Exam",
-                message = "Delete exam ${exam.code}? This action cannot be undone.",
-                confirmLabel = if (isLoading) "Deleting..." else "Delete",
+                title = "Xóa đề thi",
+                message = "Xóa đề thi ${exam.code}? Hành động này không thể hoàn tác.",
+                confirmLabel = if (isLoading) "Đang xóa..." else "Xóa",
                 destructive = true,
                 processing = isLoading,
                 onConfirm = {
@@ -211,14 +240,14 @@ fun TeacherExamListScreen(
             )
         }
 
-        ExamTopBar("Exams", onBack)
-        SectionTitle("Exam List", "Choose an exam to add questions")
+        ExamTopBar("Đề thi", onBack)
+        SectionTitle("Danh sách đề thi", "Chọn đề thi để thêm câu hỏi")
         if (message != null) {
             InfoBanner(message.orEmpty(), AppAmber, Icons.Default.Info)
             Spacer(Modifier.height(12.dp))
         }
         if (isLoading) {
-            LoadingStateCard("Loading exams...")
+            LoadingStateCard("Đang tải đề thi...")
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),
@@ -242,12 +271,12 @@ fun TeacherExamListScreen(
                                 OutlinedButton(onClick = { onViewQuestions(exam) }, modifier = Modifier.weight(1f)) {
                                     Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("Questions")
+                                    Text("Câu hỏi")
                                 }
                                 OutlinedButton(onClick = { onAddQuestion(exam) }, modifier = Modifier.weight(1f)) {
                                     Icon(Icons.Default.QuestionAnswer, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("Add")
+                                    Text("Thêm")
                                 }
                             }
                             Spacer(Modifier.height(8.dp))
@@ -255,10 +284,10 @@ fun TeacherExamListScreen(
                                 OutlinedButton(onClick = { onEditExam(exam) }, modifier = Modifier.weight(1f)) {
                                     Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("Edit")
+                                    Text("Sửa")
                                 }
                                 OutlinedButton(onClick = { pendingDeleteExam = exam }, modifier = Modifier.weight(1f)) {
-                                    Text("Delete")
+                                    Text("Xóa")
                                 }
                             }
                         }
@@ -266,7 +295,7 @@ fun TeacherExamListScreen(
                 }
             }
         }
-        PrimaryAction("Create Exam", onClick = onCreateExam)
+        PrimaryAction("Tạo đề thi", onClick = onCreateExam)
     }
 }
 
@@ -284,13 +313,13 @@ fun ExamQuestionListScreen(
     LaunchedEffect(exam?.id) {
         val selectedExam = exam
         if (selectedExam == null) {
-            message = "Select an exam first."
+            message = "Vui lòng chọn đề thi."
             isLoading = false
             return@LaunchedEffect
         }
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) {
-            message = "Please sign in again."
+            message = "Vui lòng đăng nhập lại."
             isLoading = false
             return@LaunchedEffect
         }
@@ -299,17 +328,17 @@ fun ExamQuestionListScreen(
             val response = ApiClient.getExamQuestions(authorization, selectedExam.id)
             questions = response.data.orEmpty()
             ExamAttemptStore.setBackendQuestions(questions)
-            message = if (questions.isEmpty()) "No questions yet. Add the first question." else null
+            message = if (questions.isEmpty()) "Chưa có câu hỏi. Thêm câu hỏi đầu tiên." else null
         } catch (exception: Exception) {
-            message = "Cannot load questions right now."
+            message = "Không thể tải câu hỏi lúc này."
         } finally {
             isLoading = false
         }
     }
 
     AppBackground {
-        ExamTopBar("Exam Questions", onBack)
-        SectionTitle(exam?.title ?: "Questions", exam?.let { "Code ${it.code}" })
+        ExamTopBar("Câu hỏi của đề thi", onBack)
+        SectionTitle(exam?.title ?: "Câu hỏi", exam?.let { "Mã đề ${it.code}" })
         if (message != null) {
             InfoBanner(message.orEmpty(), AppAmber, Icons.Default.Info)
             Spacer(Modifier.height(12.dp))
@@ -348,21 +377,21 @@ fun ExamQuestionListScreen(
                         Spacer(Modifier.height(8.dp))
                         question.answers.orEmpty().forEachIndexed { index, answer ->
                             val label = ('A' + index).toString()
-                            val marker = if (answer.correct == true) "Correct: " else ""
+                            val marker = if (answer.correct == true) "Đúng: " else ""
                             Text("$label. $marker${answer.content}", color = if (answer.correct == true) AppMint else AppMuted, style = MaterialTheme.typography.bodyMedium)
                         }
                         Spacer(Modifier.height(12.dp))
                         OutlinedButton(onClick = { onEditQuestion(question) }, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Edit Question")
+                            Text("Sửa câu hỏi")
                         }
                     }
                 }
             }
         }
         }
-        PrimaryAction("Add Question", onClick = onAddQuestion)
+        PrimaryAction("Thêm câu hỏi", onClick = onAddQuestion)
     }
 }
 
@@ -388,7 +417,7 @@ fun TeacherDashboardScreen(
             examCount = ApiClient.getExams(authorization).data.orEmpty().size
             questionCount = ApiClient.getQuestions(authorization).data.orEmpty().size
         } catch (exception: Exception) {
-            message = "Cannot load dashboard data right now."
+            message = "Không thể tải dữ liệu lúc này."
         }
     }
 
@@ -400,7 +429,7 @@ fun TeacherDashboardScreen(
             .padding(horizontal = 18.dp)
     ) {
         Spacer(Modifier.height(18.dp))
-        GradientHero("Teacher Dashboard", "Manage exams, questions & monitor integrity") {
+        GradientHero("Bảng điều khiển", "Quản lý đề thi, câu hỏi và giám sát") {
             StatusPill(NetworkState.ONLINE)
         }
 
@@ -411,22 +440,22 @@ fun TeacherDashboardScreen(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCard("Exams", examCount?.toString() ?: "--", "Available exams", AppBlue, Icons.Default.Assessment, modifier = Modifier.height(108.dp))
-                MetricCard("Alerts", "--", "No alerts", AppMuted, Icons.Default.Warning, modifier = Modifier.height(108.dp))
+                MetricCard("Đề thi", examCount?.toString() ?: "--", "Đề thi hiện có", AppBlue, Icons.Default.Assessment, modifier = Modifier.height(108.dp))
+                MetricCard("Cảnh báo", "--", "Không có cảnh báo", AppMuted, Icons.Default.Warning, modifier = Modifier.height(108.dp))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCard("Questions", questionCount?.toString() ?: "--", "Question bank", AppViolet, Icons.Default.QuestionAnswer, modifier = Modifier.height(108.dp))
-                MetricCard("Sync", "Live", "Ready", AppMint, Icons.Default.CloudDone, modifier = Modifier.height(108.dp))
+                MetricCard("Câu hỏi", questionCount?.toString() ?: "--", "Ngân hàng câu hỏi", AppViolet, Icons.Default.QuestionAnswer, modifier = Modifier.height(108.dp))
+                MetricCard("Đồng bộ", "Trực tiếp", "Sẵn sàng", AppMint, Icons.Default.CloudDone, modifier = Modifier.height(108.dp))
             }
         }
 
-        SectionTitle("Quick Actions")
+        SectionTitle("Thao tác nhanh")
         val actions = listOf(
-            Triple("Questions", Icons.Default.QuestionAnswer, openQuestions),
-            Triple("Create Exam", Icons.Default.Add, openCreateExam),
-            Triple("Auto Generate", Icons.Default.AutoAwesome, openGenerate),
-            Triple("Monitoring", Icons.Default.Visibility, openMonitor),
-            Triple("Reports", Icons.Default.Assessment, openReports),
+            Triple("Câu hỏi", Icons.Default.QuestionAnswer, openQuestions),
+            Triple("Tạo đề thi", Icons.Default.Add, openCreateExam),
+            Triple("Tự động tạo", Icons.Default.AutoAwesome, openGenerate),
+            Triple("Giám sát", Icons.Default.Visibility, openMonitor),
+            Triple("Báo cáo", Icons.Default.Assessment, openReports),
         )
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -471,10 +500,10 @@ private fun calculatePointsEach(totalQuestions: Int): String {
 }
 
 private fun questionTypeLabel(type: QuestionType): String = when (type) {
-    QuestionType.SINGLE -> "Single Choice"
-    QuestionType.MULTI -> "Multiple Choice"
-    QuestionType.TRUE_FALSE -> "True / False"
-    QuestionType.FILL_BLANK -> "Fill Blank"
+    QuestionType.SINGLE -> "Một đáp án"
+    QuestionType.MULTI -> "Nhiều đáp án"
+    QuestionType.TRUE_FALSE -> "Đúng / Sai"
+    QuestionType.FILL_BLANK -> "Điền khuyết"
 }
 
 private fun normalizedQuestionSignature(
@@ -498,7 +527,7 @@ private fun ConfirmActionDialog(
     title: String,
     message: String,
     confirmLabel: String,
-    dismissLabel: String = "Cancel",
+    dismissLabel: String = "Hủy",
     destructive: Boolean = false,
     processing: Boolean = false,
     onConfirm: () -> Unit,
@@ -546,16 +575,16 @@ fun QuestionBankScreen(
         scope.launch {
             val authorization = SessionManager.authorizationHeader()
             if (authorization == null) {
-                message = "Please sign in again."
+                message = "Vui lòng đăng nhập lại."
                 return@launch
             }
             isLoading = true
             try {
                 val response = ApiClient.getQuestions(authorization)
                 questions = response.data.orEmpty()
-                message = if (questions.isEmpty()) "No questions yet." else null
+                message = if (questions.isEmpty()) "Chưa có câu hỏi nào." else null
             } catch (exception: Exception) {
-                message = "Cannot load questions right now."
+                message = "Không thể tải câu hỏi lúc này."
             } finally {
                 isLoading = false
             }
@@ -566,24 +595,24 @@ fun QuestionBankScreen(
         scope.launch {
             val authorization = SessionManager.authorizationHeader()
             if (authorization == null) {
-                message = "Please sign in again."
+                message = "Vui lòng đăng nhập lại."
                 return@launch
             }
             try {
                 val response = ApiClient.deleteQuestion(authorization, question.id)
                 if (response.success) {
                     questions = questions.filterNot { it.id == question.id }
-                    message = "Question deleted."
+                    message = "Đã xóa câu hỏi."
                     if (questions.isEmpty()) {
-                        message = "Question deleted. No questions left."
+                        message = "Đã xóa câu hỏi. Không còn câu hỏi nào."
                     }
                 } else {
-                    message = response.message.ifBlank { "Cannot delete question right now." }
+                    message = response.message.ifBlank { "Không thể xóa câu hỏi lúc này." }
                 }
             } catch (exception: HttpException) {
-                message = "Cannot delete question. Please check your account permission."
+                message = "Không thể xóa câu hỏi. Vui lòng kiểm tra quyền."
             } catch (exception: Exception) {
-                message = "Cannot delete question right now."
+                message = "Không thể xóa câu hỏi lúc này."
             }
         }
     }
@@ -592,7 +621,7 @@ fun QuestionBankScreen(
         scope.launch {
             val authorization = SessionManager.authorizationHeader()
             if (authorization == null) {
-                message = "Please sign in again."
+                message = "Vui lòng đăng nhập lại."
                 return@launch
             }
 
@@ -602,7 +631,7 @@ fun QuestionBankScreen(
                 val fileBytes = withContext(Dispatchers.IO) {
                     context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 } ?: run {
-                    message = "Cannot open the selected Excel file."
+                    message = "Không thể mở file Excel đã chọn."
                     return@launch
                 }
 
@@ -611,26 +640,26 @@ fun QuestionBankScreen(
                 if (response.success && result != null && result.success) {
                     val skippedCount = result.errors.orEmpty().size
                     message = if (skippedCount > 0) {
-                        "Imported ${result.importedQuestions} question(s). Skipped $skippedCount duplicate or invalid row(s)."
+                        "Đã nhập ${result.importedQuestions} câu hỏi. Bỏ qua $skippedCount hàng trùng lặp hoặc không hợp lệ."
                     } else {
-                        "Imported ${result.importedQuestions} question(s) from Excel."
+                        "Đã nhập ${result.importedQuestions} câu hỏi từ Excel."
                     }
                     loadQuestions()
                 } else if (result != null) {
                     val sampleFailures = result.errors.orEmpty().take(3).joinToString("; ") {
-                        "row ${it.rowNumber}: ${it.message}"
+                        "hàng ${it.rowNumber}: ${it.message}"
                     }
-                    val moreFailures = if ((result.errors?.size ?: 0) > 3) " +${(result.errors?.size ?: 0) - 3} more" else ""
+                    val moreFailures = if ((result.errors?.size ?: 0) > 3) " +${(result.errors?.size ?: 0) - 3} nữa" else ""
                     message = if (sampleFailures.isBlank()) {
-                        "Import failed. Check the Excel template."
+                        "Nhập thất bại. Kiểm tra mẫu Excel."
                     } else {
-                        "Import failed: $sampleFailures$moreFailures"
+                        "Nhập thất bại: $sampleFailures$moreFailures"
                     }
                 } else {
-                    message = response.message.ifBlank { "Import failed" }
+                    message = response.message.ifBlank { "Nhập thất bại." }
                 }
             } catch (exception: Exception) {
-                message = "Cannot import the selected Excel file."
+                message = "Không thể nhập file Excel đã chọn."
             } finally {
                 importLoading = false
             }
@@ -668,9 +697,9 @@ fun QuestionBankScreen(
                         )
                     } ?: error("Cannot open output stream")
                 }
-                message = "Question import template saved."
+                message = "Đã lưu mẫu nhập Excel."
             } catch (exception: Exception) {
-                message = "Cannot save question import template."
+                message = "Không thể lưu mẫu nhập Excel."
             } finally {
                 templateLoading = false
             }
@@ -716,9 +745,9 @@ fun QuestionBankScreen(
     AppBackground {
         pendingDeleteQuestion?.let { question ->
             ConfirmActionDialog(
-                title = "Delete Question",
-                message = "Delete question ID ${question.id}? This action cannot be undone.",
-                confirmLabel = if (isLoading) "Deleting..." else "Delete",
+                title = "Xóa câu hỏi",
+                message = "Xóa câu hỏi ID ${question.id}? Hành động này không thể hoàn tác.",
+                confirmLabel = if (isLoading) "Đang xóa..." else "Xóa",
                 destructive = true,
                 processing = isLoading,
                 onConfirm = {
@@ -729,13 +758,13 @@ fun QuestionBankScreen(
             )
         }
 
-        ExamTopBar("Question Bank", onBack)
+        ExamTopBar("Ngân hàng câu hỏi", onBack)
 
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Search questions...") },
+            label = { Text("Tìm câu hỏi...") },
             leadingIcon = { Icon(Icons.Default.Search, null, tint = AppMuted) },
             shape = MaterialTheme.shapes.medium,
             colors = OutlinedTextFieldDefaults.colors(
@@ -748,9 +777,9 @@ fun QuestionBankScreen(
         if (message != null) {
             val currentMessage = message.orEmpty()
             val bannerColor = when {
-                currentMessage.startsWith("Imported") -> AppMint
+                currentMessage.startsWith("Đã nhập") -> AppMint
                 currentMessage.startsWith("Import completed") -> AppAmber
-                currentMessage.startsWith("No questions") -> AppAmber
+                currentMessage.startsWith("Chưa có câu hỏi") -> AppAmber
                 else -> AppRed
             }
             val bannerIcon = if (bannerColor == AppRed) Icons.Default.ErrorOutline else Icons.Default.Info
@@ -765,12 +794,12 @@ fun QuestionBankScreen(
         ) {
             if (isLoading) {
                 item {
-                    LoadingStateCard("Loading questions...")
+            LoadingStateCard("Đang tải câu hỏi...")
                 }
             }
             if (filteredQuestions.isEmpty() && debouncedSearchQuery.isNotBlank()) {
                 item {
-                    InfoBanner("No matching questions.", AppAmber, Icons.Default.Info)
+                    InfoBanner("Không có câu hỏi phù hợp.", AppAmber, Icons.Default.Info)
                 }
             }
             items(filteredQuestions) { question ->
@@ -810,7 +839,7 @@ fun QuestionBankScreen(
                             Spacer(Modifier.height(10.dp))
                             answers.forEachIndexed { index, answer ->
                                 val label = ('A' + index).toString()
-                                val prefix = if (answer.correct == true) "Correct: " else ""
+                                val prefix = if (answer.correct == true) "Đúng: " else ""
                                 Text(
                                     "$label. $prefix${answer.content}",
                                     color = if (answer.correct == true) AppMint else AppMuted,
@@ -827,14 +856,14 @@ fun QuestionBankScreen(
                             ) {
                                 Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("Edit")
+                                Text("Sửa")
                             }
                             OutlinedButton(
                                 onClick = { pendingDeleteQuestion = question },
                                 modifier = Modifier.weight(1f),
                                 shape = MaterialTheme.shapes.medium
                             ) {
-                                Text("Delete")
+                                Text("Xóa")
                             }
                         }
                     }
@@ -853,7 +882,7 @@ fun QuestionBankScreen(
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Add Question")
+                Text("Thêm câu hỏi")
             }
             OutlinedButton(
                 onClick = { importLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) },
@@ -865,7 +894,7 @@ fun QuestionBankScreen(
             ) {
                 Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(if (importLoading) "Importing..." else "Import")
+                Text(if (importLoading) "Đang nhập..." else "Nhập Excel")
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -879,7 +908,7 @@ fun QuestionBankScreen(
         ) {
             Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
-            Text(if (templateLoading) "Saving..." else "Download Import Template")
+            Text(if (templateLoading) "Đang lưu..." else "Tải mẫu Excel")
         }
     }
 }
@@ -904,7 +933,41 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
     var message by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var catalogLoading by remember { mutableStateOf(false) }
+    var imageUrl by remember { mutableStateOf<String?>(null) }
+    var uploadingImage by remember { mutableStateOf(false) }
+    var imagePreviewUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var addSubjectDialog by remember { mutableStateOf(false) }
+    var addTopicDialog by remember { mutableStateOf(false) }
+    var newSubjectName by remember { mutableStateOf("") }
+    var newTopicName by remember { mutableStateOf("") }
+    var addSubjectLoading by remember { mutableStateOf(false) }
+    var addTopicLoading by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            imagePreviewUri = uri
+            scope.launch {
+                uploadingImage = true
+                try {
+                    val bytes = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    } ?: return@launch
+                    val auth = SessionManager.authorizationHeader() ?: return@launch
+                    val response = ApiClient.uploadFile(auth, "question_image", bytes, "image/jpeg")
+                    if (response.success) {
+                        imageUrl = response.data?.url
+                    } else {
+                        message = "Tải ảnh lên thất bại."
+                    }
+                } catch (e: Exception) {
+                    message = "Tải ảnh lên thất bại."
+                } finally {
+                    uploadingImage = false
+                }
+            }
+        }
+    }
     val gson = remember { Gson() }
 
     LaunchedEffect(type) {
@@ -948,7 +1011,7 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
                 message = response.message
             }
         } catch (exception: Exception) {
-            message = "Cannot load subjects right now."
+            message = "Không thể tải môn học lúc này."
         } finally {
             catalogLoading = false
         }
@@ -977,16 +1040,16 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
         } catch (exception: Exception) {
             topics = emptyList()
             selectedTopic = null
-            message = "Cannot load topics right now."
+            message = "Không thể tải chủ đề lúc này."
         }
     }
 
     fun saveQuestion() {
         val authorization = SessionManager.authorizationHeader()
-        if (authorization == null) { message = "Please sign in again."; return }
-        if (content.isBlank()) { message = "Question content is required."; return }
+        if (authorization == null) { message = "Vui lòng đăng nhập lại."; return }
+        if (content.isBlank()) { message = "Vui lòng nhập nội dung câu hỏi."; return }
         val subject = selectedSubject
-        if (subject == null) { message = "Select a subject before saving."; return }
+        if (subject == null) { message = "Vui lòng chọn môn học."; return }
         val answerEntries = listOf(
             "A" to answerA.trim(),
             "B" to answerB.trim(),
@@ -995,13 +1058,13 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
         ).filter { it.second.isNotBlank() }
         val minAnswers = if (type == QuestionType.FILL_BLANK) 1 else 2
         if (answerEntries.size < minAnswers) {
-            message = if (type == QuestionType.FILL_BLANK) "Enter the expected answer." else "At least two answer options are required."
+            message = if (type == QuestionType.FILL_BLANK) "Nhập đáp án đúng." else "Cần ít nhất hai đáp án."
             return
         }
         val validCorrectLabels = answerEntries.map { it.first }.toSet()
         val selectedCorrect = correctAnswers.intersect(validCorrectLabels)
-        if (selectedCorrect.isEmpty()) { message = "Select the correct answer."; return }
-        if (type != QuestionType.MULTI && selectedCorrect.size != 1) { message = "Select one correct answer."; return }
+        if (selectedCorrect.isEmpty()) { message = "Chọn đáp án đúng."; return }
+        if (type != QuestionType.MULTI && selectedCorrect.size != 1) { message = "Chọn một đáp án đúng."; return }
         scope.launch {
             loading = true; message = null
             try {
@@ -1014,6 +1077,7 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
                             content = content.trim(),
                             type = type.name,
                             difficulty = difficulty.name,
+                            imageUrl = imageUrl,
                             answers = answerEntries.map { (label, answer) ->
                                 AnswerCreateRequest(
                                     content = answer.trim(),
@@ -1033,13 +1097,13 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
                         answerD = ""
                         correctAnswers = setOf("A")
                         explanation = ""
-                        message = "Question created in bank."
+                        message = "Đã tạo câu hỏi trong ngân hàng."
                     } else {
                         message = response.message
                     }
                 } else {
                     val exam = selectedExam ?: run {
-                        message = "Select an exam before creating questions."
+                        message = "Vui lòng chọn đề thi trước khi tạo câu hỏi."
                         return@launch
                     }
                     val response = ApiClient.createQuestionForExam(
@@ -1051,6 +1115,7 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
                             content = content.trim(),
                             type = type.name,
                             difficulty = difficulty.name,
+                            imageUrl = imageUrl,
                             orderIndex = null,
                             score = null,
                             answers = answerEntries.map { (label, answer) ->
@@ -1072,19 +1137,19 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
                         answerD = ""
                         correctAnswers = setOf("A")
                         explanation = ""
-                        message = "Question added to ${exam.title}"
+                        message = "Đã thêm câu hỏi vào ${exam.title}"
                     } else {
                         message = response.message
                     }
                 }
-            } catch (exception: HttpException) { message = "Cannot save question. Please check your account permission." }
-            catch (exception: Exception) { message = "Cannot save question right now." }
+            } catch (exception: HttpException) { message = "Không thể lưu câu hỏi. Vui lòng kiểm tra quyền." }
+            catch (exception: Exception) { message = "Không thể lưu câu hỏi lúc này." }
             finally { loading = false }
         }
     }
 
     AppBackground {
-        ExamTopBar("Create Question", onBack)
+        ExamTopBar("Tạo câu hỏi", onBack)
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -1093,45 +1158,80 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
             item {
                 InfoBanner(
                     if (isBankMode) {
-                        "Question bank mode. This question will be reusable across exams."
+                        "Chế độ ngân hàng. Câu hỏi này có thể dùng lại cho nhiều đề thi."
                     } else {
-                        "Adding question to exam: ${selectedExam?.title}"
+                        "Đang thêm câu hỏi vào đề thi: ${selectedExam?.title}"
                     },
                     if (isBankMode) AppBlue else AppMint,
                     Icons.Default.Info
                 )
 
-                SectionTitle("Question Content")
+                SectionTitle("Nội dung câu hỏi")
                 OutlinedTextField(content, { content = it }, modifier = Modifier
                     .fillMaxWidth()
-                    .height(120.dp), label = { Text("Enter the question text") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                    .height(120.dp), label = { Text("Nhập nội dung câu hỏi") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(
+                        onClick = { imagePickerLauncher.launch("image/*") },
+                        enabled = !loading && !uploadingImage,
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        if (uploadingImage) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Icon(Icons.Default.Image, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (imageUrl != null) "Đổi hình ảnh" else "Thêm hình ảnh")
+                    }
+                    if (imageUrl != null) {
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = { imageUrl = null; imagePreviewUri = null }) {
+                            Text("Xóa", color = AppRed)
+                        }
+                    }
+                }
+                if (imagePreviewUri != null && imageUrl != null) {
+                    Spacer(Modifier.height(8.dp))
+                    AsyncImage(
+                        model = imagePreviewUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).clip(MaterialTheme.shapes.medium),
+                        contentScale = ContentScale.Fit
+                    )
+                }
 
-                SectionTitle("Classification")
+                SectionTitle("Phân loại")
                 CatalogDropdown(
-                    label = "Subject",
-                    value = selectedSubject?.name ?: if (catalogLoading) "Loading subjects..." else "Select subject",
+                    label = "Môn học",
+                    value = selectedSubject?.name ?: if (catalogLoading) "Đang tải môn học..." else "Chọn môn học",
                     enabled = !loading && !catalogLoading && subjects.isNotEmpty(),
                     items = subjects,
                     itemText = { it.name },
                     onSelect = {
                         selectedSubject = it
                         selectedTopic = null
-                    }
+                    },
+                    addLabel = "+ Thêm môn học",
+                    onAdd = { addSubjectDialog = true }
                 )
                 Spacer(Modifier.height(8.dp))
                 CatalogDropdown(
-                    label = "Topic (optional)",
-                    value = selectedTopic?.name ?: if (topics.isEmpty()) "No topic" else "No topic selected",
+                    label = "Chủ đề (không bắt buộc)",
+                    value = selectedTopic?.name ?: if (topics.isEmpty()) "Không có chủ đề" else "Không có chủ đề",
                     enabled = !loading && topics.isNotEmpty(),
                     items = topics,
                     itemText = { it.name },
                     onSelect = { selectedTopic = it },
-                    leadingClearItem = "No topic",
-                    onClear = { selectedTopic = null }
+                    leadingClearItem = "Không có chủ đề",
+                    onClear = { selectedTopic = null },
+                    addLabel = if (selectedSubject != null) "+ Thêm chủ đề" else null,
+                    onAdd = if (selectedSubject != null) {{ addTopicDialog = true }} else null
                 )
 
                 Spacer(Modifier.height(8.dp))
-                Text("Difficulty", color = AppMuted, style = MaterialTheme.typography.labelMedium)
+                Text("Độ khó", color = AppMuted, style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Difficulty.entries.forEach { d ->
@@ -1158,7 +1258,7 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
                 }
 
                 Spacer(Modifier.height(8.dp))
-                Text("Question Type", color = AppMuted, style = MaterialTheme.typography.labelMedium)
+                Text("Loại câu hỏi", color = AppMuted, style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(6.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     QuestionType.entries.chunked(2).forEach { rowItems ->
@@ -1177,7 +1277,7 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
                     }
                 }
 
-                SectionTitle("Answer Options")
+                SectionTitle("Đáp án")
                 if (type == QuestionType.FILL_BLANK) {
                     OutlinedTextField(
                         answerA,
@@ -1186,13 +1286,13 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
                             correctAnswers = setOf("A")
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Expected answer") },
+                        label = { Text("Đáp án đúng") },
                         enabled = !loading,
                         shape = MaterialTheme.shapes.medium
                     )
                 } else {
                     Text(
-                        if (type == QuestionType.MULTI) "Tick all correct answers" else "Select the correct answer",
+                        if (type == QuestionType.MULTI) "Chọn tất cả đáp án đúng" else "Chọn đáp án đúng",
                         color = AppMuted,
                         style = MaterialTheme.typography.bodyMedium
                     )
@@ -1256,17 +1356,84 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
                     }
                 }
 
-                SectionTitle("Explanation")
+                SectionTitle("Giải thích")
                 OutlinedTextField(explanation, { explanation = it }, modifier = Modifier
                     .fillMaxWidth()
-                    .height(100.dp), label = { Text("Explain why this is correct") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                    .height(100.dp), label = { Text("Giải thích tại sao đáp án này đúng") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
 
                 if (message != null) {
                     Spacer(Modifier.height(8.dp))
-                    InfoBanner(message.orEmpty(), if (message.orEmpty().startsWith("Question added")) AppMint else AppRed, if (message.orEmpty().startsWith("Question added")) Icons.Default.CheckCircle else Icons.Default.ErrorOutline)
+                    InfoBanner(message.orEmpty(), if (message.orEmpty().startsWith("Đã thêm câu hỏi") || message.orEmpty().startsWith("Đã tạo câu hỏi")) AppMint else AppRed, if (message.orEmpty().startsWith("Đã thêm câu hỏi") || message.orEmpty().startsWith("Đã tạo câu hỏi")) Icons.Default.CheckCircle else Icons.Default.ErrorOutline)
                 }
                 Spacer(Modifier.height(14.dp))
-                PrimaryAction(if (loading) "Saving..." else "Save Question") { if (!loading) saveQuestion() }
+                PrimaryAction(if (loading) "Đang lưu..." else "Lưu câu hỏi") { if (!loading) saveQuestion() }
+            }
+        }
+
+        if (addSubjectDialog) {
+            QuickAddDialog(
+                title = "Thêm môn học",
+                name = newSubjectName,
+                onNameChange = { newSubjectName = it },
+                onDismiss = { addSubjectDialog = false; newSubjectName = "" },
+                onConfirm = {
+                    val auth = SessionManager.authorizationHeader() ?: return@QuickAddDialog
+                    addSubjectLoading = true
+                    scope.launch {
+                        try {
+                            val response = ApiClient.createSubject(auth, SubjectCreateRequest(name = newSubjectName.trim()))
+                            if (response.success) {
+                                response.data?.let { subjects = subjects + it; selectedSubject = it; selectedTopic = null }
+                                message = "Đã thêm môn học."
+                            } else {
+                                message = response.message
+                            }
+                        } catch (e: Exception) {
+                            message = "Không thể thêm môn học."
+                        } finally {
+                            addSubjectLoading = false
+                            addSubjectDialog = false
+                            newSubjectName = ""
+                        }
+                    }
+                },
+                loading = addSubjectLoading
+            )
+        }
+
+        if (addTopicDialog) {
+            val subject = selectedSubject
+            if (subject == null) {
+                addTopicDialog = false
+            } else {
+                QuickAddDialog(
+                    title = "Thêm chủ đề cho ${subject.name}",
+                    name = newTopicName,
+                    onNameChange = { newTopicName = it },
+                    onDismiss = { addTopicDialog = false; newTopicName = "" },
+                    onConfirm = {
+                        val auth = SessionManager.authorizationHeader() ?: return@QuickAddDialog
+                        addTopicLoading = true
+                        scope.launch {
+                            try {
+                                val response = ApiClient.createTopic(auth, subject.id, TopicCreateRequest(name = newTopicName.trim()))
+                                if (response.success) {
+                                    response.data?.let { topics = topics + it; selectedTopic = it }
+                                    message = "Đã thêm chủ đề."
+                                } else {
+                                    message = response.message
+                                }
+                            } catch (e: Exception) {
+                                message = "Không thể thêm chủ đề."
+                            } finally {
+                                addTopicLoading = false
+                                addTopicDialog = false
+                                newTopicName = ""
+                            }
+                        }
+                    },
+                    loading = addTopicLoading
+                )
             }
         }
     }
@@ -1304,7 +1471,7 @@ private fun AnswerOptionInput(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.weight(1f),
-            label = { Text("Answer $label") },
+            label = { Text("Đáp án $label") },
             enabled = enabled,
             shape = MaterialTheme.shapes.medium
         )
@@ -1343,7 +1510,42 @@ fun EditQuestionScreen(onBack: () -> Unit) {
     var loading by remember { mutableStateOf(false) }
     var catalogLoading by remember { mutableStateOf(false) }
     var showUpdateConfirm by remember { mutableStateOf(false) }
+    val initialImageUrl = examQuestion?.imageUrl ?: bankQuestion?.imageUrl
+    var imageUrl by remember(stateKey) { mutableStateOf(initialImageUrl) }
+    var uploadingImage by remember { mutableStateOf(false) }
+    var imagePreviewUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var addSubjectDialog by remember { mutableStateOf(false) }
+    var addTopicDialog by remember { mutableStateOf(false) }
+    var newSubjectName by remember { mutableStateOf("") }
+    var newTopicName by remember { mutableStateOf("") }
+    var addSubjectLoading by remember { mutableStateOf(false) }
+    var addTopicLoading by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            imagePreviewUri = uri
+            scope.launch {
+                uploadingImage = true
+                try {
+                    val bytes = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    } ?: return@launch
+                    val auth = SessionManager.authorizationHeader() ?: return@launch
+                    val response = ApiClient.uploadFile(auth, "question_image", bytes, "image/jpeg")
+                    if (response.success) {
+                        imageUrl = response.data?.url
+                    } else {
+                        message = "Tải ảnh lên thất bại."
+                    }
+                } catch (e: Exception) {
+                    message = "Tải ảnh lên thất bại."
+                } finally {
+                    uploadingImage = false
+                }
+            }
+        }
+    }
 
     LaunchedEffect(type) {
         when (type) {
@@ -1381,7 +1583,7 @@ fun EditQuestionScreen(onBack: () -> Unit) {
             subjects = response.data.orEmpty()
             selectedSubject = subjects.firstOrNull { it.id == initialSubjectId } ?: subjects.firstOrNull()
         } catch (exception: Exception) {
-            message = "Cannot load subjects right now."
+            message = "Không thể tải môn học lúc này."
         } finally {
             catalogLoading = false
         }
@@ -1399,7 +1601,7 @@ fun EditQuestionScreen(onBack: () -> Unit) {
         } catch (exception: Exception) {
             topics = emptyList()
             selectedTopic = null
-            message = "Cannot load topics right now."
+            message = "Không thể tải chủ đề lúc này."
         }
     }
 
@@ -1411,27 +1613,27 @@ fun EditQuestionScreen(onBack: () -> Unit) {
     fun updateQuestion() {
         val subject = selectedSubject
         val authorization = SessionManager.authorizationHeader()
-        if (examQuestion == null && bankQuestion == null) { message = "Select a question before editing."; return }
+        if (examQuestion == null && bankQuestion == null) { message = "Vui lòng chọn câu hỏi trước khi sửa."; return }
         if (authorization == null) { message = "Please sign in again."; return }
-        if (subject == null) { message = "Select a subject before saving."; return }
+        if (subject == null) { message = "Vui lòng chọn môn học."; return }
         if (content.isBlank()) { message = "Question content is required."; return }
         val answerEntries = buildAnswerEntries()
         val minAnswers = if (type == QuestionType.FILL_BLANK) 1 else 2
         if (answerEntries.size < minAnswers) {
-            message = if (type == QuestionType.FILL_BLANK) "Enter the expected answer." else "At least two answer options are required."
+            message = if (type == QuestionType.FILL_BLANK) "Nhập đáp án đúng." else "Cần ít nhất hai đáp án."
             return
         }
         val validCorrectLabels = answerEntries.map { it.first }.toSet()
         val selectedCorrect = correctAnswers.intersect(validCorrectLabels)
-        if (selectedCorrect.isEmpty()) { message = "Select the correct answer."; return }
-        if (type != QuestionType.MULTI && selectedCorrect.size != 1) { message = "Select one correct answer."; return }
+        if (selectedCorrect.isEmpty()) { message = "Chọn đáp án đúng."; return }
+        if (type != QuestionType.MULTI && selectedCorrect.size != 1) { message = "Chọn một đáp án đúng."; return }
 
         scope.launch {
             loading = true; message = null
             try {
                 if (isBankMode) {
                     val selectedQuestion = bankQuestion ?: run {
-                        message = "Select a question before editing."
+                        message = "Vui lòng chọn câu hỏi trước khi sửa."
                         return@launch
                     }
                     val response = ApiClient.updateQuestion(
@@ -1443,6 +1645,7 @@ fun EditQuestionScreen(onBack: () -> Unit) {
                             content = content.trim(),
                             type = type.name,
                             difficulty = difficulty.name,
+                            imageUrl = imageUrl,
                             answers = answerEntries.map { (label, answer) ->
                                 AnswerCreateRequest(
                                     content = answer,
@@ -1454,17 +1657,17 @@ fun EditQuestionScreen(onBack: () -> Unit) {
                     )
                     if (response.success) {
                         response.data?.let { ExamAttemptStore.setSelectedBankQuestion(it) }
-                        message = "Question updated."
+                        message = "Đã cập nhật câu hỏi."
                     } else {
                         message = response.message
                     }
                 } else {
                     val selectedExam = exam ?: run {
-                        message = "Select an exam before editing."
+                        message = "Vui lòng chọn đề thi trước khi sửa."
                         return@launch
                     }
                     val selectedQuestion = examQuestion ?: run {
-                        message = "Select a question before editing."
+                        message = "Vui lòng chọn câu hỏi trước khi sửa."
                         return@launch
                     }
                     val response = ApiClient.updateQuestionForExam(
@@ -1477,6 +1680,7 @@ fun EditQuestionScreen(onBack: () -> Unit) {
                             content = content.trim(),
                             type = type.name,
                             difficulty = difficulty.name,
+                            imageUrl = imageUrl,
                             orderIndex = selectedQuestion.orderIndex,
                             score = selectedQuestion.score,
                             answers = answerEntries.map { (label, answer) ->
@@ -1490,13 +1694,13 @@ fun EditQuestionScreen(onBack: () -> Unit) {
                     )
                     if (response.success) {
                         response.data?.let { ExamAttemptStore.setSelectedQuestion(it) }
-                        message = "Question updated."
+                        message = "Đã cập nhật câu hỏi."
                     } else {
                         message = response.message
                     }
                 }
-            } catch (exception: HttpException) { message = "Cannot update question. Please check your account permission." }
-            catch (exception: Exception) { message = "Cannot update question right now." }
+            } catch (exception: HttpException) { message = "Không thể cập nhật câu hỏi. Vui lòng kiểm tra quyền." }
+            catch (exception: Exception) { message = "Không thể cập nhật câu hỏi lúc này." }
             finally { loading = false }
         }
     }
@@ -1504,9 +1708,9 @@ fun EditQuestionScreen(onBack: () -> Unit) {
     AppBackground {
         if (showUpdateConfirm) {
             ConfirmActionDialog(
-                title = "Update Question",
-                message = "Save changes to this question?",
-                confirmLabel = if (loading) "Saving..." else "Save",
+                title = "Cập nhật câu hỏi",
+                message = "Lưu thay đổi cho câu hỏi này?",
+                confirmLabel = if (loading) "Đang lưu..." else "Lưu",
                 processing = loading,
                 onConfirm = {
                     showUpdateConfirm = false
@@ -1516,7 +1720,7 @@ fun EditQuestionScreen(onBack: () -> Unit) {
             )
         }
 
-        ExamTopBar("Edit Question", onBack)
+        ExamTopBar("Sửa câu hỏi", onBack)
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -1525,9 +1729,9 @@ fun EditQuestionScreen(onBack: () -> Unit) {
             item {
                 InfoBanner(
                     if (isBankMode) {
-                        "Question bank mode. Updating reusable question."
+                        "Chế độ ngân hàng. Đang cập nhật câu hỏi dùng chung."
                     } else {
-                        exam?.let { "Exam: ${it.title}" } ?: "No exam selected."
+                        exam?.let { "Đề thi: ${it.title}" } ?: "Chưa chọn đề thi."
                     },
                     if (isBankMode) AppBlue else if (exam != null) AppMint else AppAmber,
                     Icons.Default.Info
@@ -1535,33 +1739,76 @@ fun EditQuestionScreen(onBack: () -> Unit) {
 
                 SectionTitle("Question Content")
                 OutlinedTextField(content, { content = it }, modifier = Modifier.fillMaxWidth().height(120.dp), label = { Text("Enter the question text") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(
+                        onClick = { imagePickerLauncher.launch("image/*") },
+                        enabled = !loading && !uploadingImage,
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        if (uploadingImage) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Icon(Icons.Default.Image, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (imageUrl != null) "Đổi hình ảnh" else "Thêm hình ảnh")
+                    }
+                    if (imageUrl != null) {
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = { imageUrl = null; imagePreviewUri = null }) {
+                            Text("Xóa", color = AppRed)
+                        }
+                    }
+                }
+                if (imagePreviewUri != null && imageUrl != null) {
+                    Spacer(Modifier.height(8.dp))
+                    AsyncImage(
+                        model = imagePreviewUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).clip(MaterialTheme.shapes.medium),
+                        contentScale = ContentScale.Fit
+                    )
+                } else if (imageUrl != null && imagePreviewUri == null) {
+                    Spacer(Modifier.height(8.dp))
+                    AsyncImage(
+                        model = "${"http://10.0.2.2:8080"}$imageUrl",
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).clip(MaterialTheme.shapes.medium),
+                        contentScale = ContentScale.Fit
+                    )
+                }
 
-                SectionTitle("Classification")
+                SectionTitle("Phân loại")
                 CatalogDropdown(
-                    label = "Subject",
-                    value = selectedSubject?.name ?: if (catalogLoading) "Loading subjects..." else "Select subject",
+                    label = "Môn học",
+                    value = selectedSubject?.name ?: if (catalogLoading) "Đang tải môn học..." else "Chọn môn học",
                     enabled = !loading && !catalogLoading && subjects.isNotEmpty(),
                     items = subjects,
                     itemText = { it.name },
                     onSelect = {
                         selectedSubject = it
                         selectedTopic = null
-                    }
+                    },
+                    addLabel = "+ Thêm môn học",
+                    onAdd = { addSubjectDialog = true }
                 )
                 Spacer(Modifier.height(8.dp))
                 CatalogDropdown(
-                    label = "Topic",
-                    value = selectedTopic?.name ?: "No topic",
+                    label = "Chủ đề",
+                    value = selectedTopic?.name ?: "Không có chủ đề",
                     enabled = !loading && topics.isNotEmpty(),
                     items = topics,
                     itemText = { it.name },
                     onSelect = { selectedTopic = it },
-                    leadingClearItem = "No topic",
-                    onClear = { selectedTopic = null }
+                    leadingClearItem = "Không có chủ đề",
+                    onClear = { selectedTopic = null },
+                    addLabel = if (selectedSubject != null) "+ Thêm chủ đề" else null,
+                    onAdd = if (selectedSubject != null) {{ addTopicDialog = true }} else null
                 )
 
                 Spacer(Modifier.height(8.dp))
-                Text("Difficulty", color = AppMuted, style = MaterialTheme.typography.labelMedium)
+                Text("Độ khó", color = AppMuted, style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Difficulty.entries.forEach { d ->
@@ -1570,7 +1817,7 @@ fun EditQuestionScreen(onBack: () -> Unit) {
                 }
 
                 Spacer(Modifier.height(8.dp))
-                Text("Question Type", color = AppMuted, style = MaterialTheme.typography.labelMedium)
+                Text("Loại câu hỏi", color = AppMuted, style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(6.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     QuestionType.entries.chunked(2).forEach { rowItems ->
@@ -1589,11 +1836,11 @@ fun EditQuestionScreen(onBack: () -> Unit) {
                     }
                 }
 
-                SectionTitle("Answer Options")
+                SectionTitle("Đáp án")
                 if (type == QuestionType.FILL_BLANK) {
-                    OutlinedTextField(answerA, { answerA = it; correctAnswers = setOf("A") }, modifier = Modifier.fillMaxWidth(), label = { Text("Expected answer") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                    OutlinedTextField(answerA, { answerA = it; correctAnswers = setOf("A") }, modifier = Modifier.fillMaxWidth(), label = { Text("Đáp án đúng") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
                 } else {
-                    Text(if (type == QuestionType.MULTI) "Tick all correct answers" else "Select the correct answer", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                    Text(if (type == QuestionType.MULTI) "Chọn tất cả đáp án đúng" else "Chọn đáp án đúng", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(6.dp))
                     AnswerOptionInput("A", answerA, { answerA = it }, "A" in correctAnswers, type == QuestionType.MULTI, !loading && type != QuestionType.TRUE_FALSE) { correctAnswers = if (type == QuestionType.MULTI) { if ("A" in correctAnswers) correctAnswers - "A" else correctAnswers + "A" } else setOf("A") }
                     Spacer(Modifier.height(6.dp))
@@ -1606,15 +1853,82 @@ fun EditQuestionScreen(onBack: () -> Unit) {
                     }
                 }
 
-                SectionTitle("Explanation")
-                OutlinedTextField(explanation, { explanation = it }, modifier = Modifier.fillMaxWidth().height(100.dp), label = { Text("Explain why this is correct") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                SectionTitle("Giải thích")
+                OutlinedTextField(explanation, { explanation = it }, modifier = Modifier.fillMaxWidth().height(100.dp), label = { Text("Giải thích tại sao đáp án này đúng") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
 
                 if (message != null) {
                     Spacer(Modifier.height(8.dp))
-                    InfoBanner(message.orEmpty(), if (message.orEmpty().startsWith("Question updated")) AppMint else AppRed, if (message.orEmpty().startsWith("Question updated")) Icons.Default.CheckCircle else Icons.Default.ErrorOutline)
+                    InfoBanner(message.orEmpty(), if (message.orEmpty().startsWith("Đã cập nhật câu hỏi")) AppMint else AppRed, if (message.orEmpty().startsWith("Đã cập nhật câu hỏi")) Icons.Default.CheckCircle else Icons.Default.ErrorOutline)
                 }
                 Spacer(Modifier.height(14.dp))
-                PrimaryAction(if (loading) "Saving..." else "Save Changes") { if (!loading) showUpdateConfirm = true }
+                PrimaryAction(if (loading) "Đang lưu..." else "Lưu thay đổi") { if (!loading) showUpdateConfirm = true }
+            }
+        }
+
+        if (addSubjectDialog) {
+            QuickAddDialog(
+                title = "Thêm môn học",
+                name = newSubjectName,
+                onNameChange = { newSubjectName = it },
+                onDismiss = { addSubjectDialog = false; newSubjectName = "" },
+                onConfirm = {
+                    val auth = SessionManager.authorizationHeader() ?: return@QuickAddDialog
+                    addSubjectLoading = true
+                    scope.launch {
+                        try {
+                            val response = ApiClient.createSubject(auth, SubjectCreateRequest(name = newSubjectName.trim()))
+                            if (response.success) {
+                                response.data?.let { subjects = subjects + it; selectedSubject = it; selectedTopic = null }
+                                message = "Đã thêm môn học."
+                            } else {
+                                message = response.message
+                            }
+                        } catch (e: Exception) {
+                            message = "Không thể thêm môn học."
+                        } finally {
+                            addSubjectLoading = false
+                            addSubjectDialog = false
+                            newSubjectName = ""
+                        }
+                    }
+                },
+                loading = addSubjectLoading
+            )
+        }
+
+        if (addTopicDialog) {
+            val subject = selectedSubject
+            if (subject == null) {
+                addTopicDialog = false
+            } else {
+                QuickAddDialog(
+                    title = "Thêm chủ đề cho ${subject.name}",
+                    name = newTopicName,
+                    onNameChange = { newTopicName = it },
+                    onDismiss = { addTopicDialog = false; newTopicName = "" },
+                    onConfirm = {
+                        val auth = SessionManager.authorizationHeader() ?: return@QuickAddDialog
+                        addTopicLoading = true
+                        scope.launch {
+                            try {
+                                val response = ApiClient.createTopic(auth, subject.id, TopicCreateRequest(name = newTopicName.trim()))
+                                if (response.success) {
+                                    response.data?.let { topics = topics + it; selectedTopic = it }
+                                    message = "Đã thêm chủ đề."
+                                } else {
+                                    message = response.message
+                                }
+                            } catch (e: Exception) {
+                                message = "Không thể thêm chủ đề."
+                            } finally {
+                                addTopicLoading = false
+                                addTopicDialog = false
+                                newTopicName = ""
+                            }
+                        }
+                    },
+                    loading = addTopicLoading
+                )
             }
         }
     }
@@ -1629,7 +1943,9 @@ private fun <T> CatalogDropdown(
     itemText: (T) -> String,
     onSelect: (T) -> Unit,
     leadingClearItem: String? = null,
-    onClear: (() -> Unit)? = null
+    onClear: (() -> Unit)? = null,
+    addLabel: String? = null,
+    onAdd: (() -> Unit)? = null
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -1670,19 +1986,74 @@ private fun <T> CatalogDropdown(
                         }
                     )
                 }
+                if (addLabel != null && onAdd != null) {
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(addLabel, color = AppBlue) },
+                        onClick = {
+                            expanded = false
+                            onAdd()
+                        }
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
+private fun QuickAddDialog(
+    title: String,
+    name: String,
+    onNameChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    loading: Boolean
+) {
+    AlertDialog(
+        onDismissRequest = { if (!loading) onDismiss() },
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = onNameChange,
+                label = { Text("Tên") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+                enabled = !loading
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = !loading && name.isNotBlank()) {
+                if (loading) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text("Thêm")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !loading) { Text("Hủy") }
+        }
+    )
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
     var randomQuestion by remember { mutableStateOf(true) }
     var randomAnswer by remember { mutableStateOf(true) }
     var title by remember { mutableStateOf("Android Practice Exam") }
     var duration by remember { mutableStateOf("45") }
-    var openTime by remember { mutableStateOf("") }
-    var closeTime by remember { mutableStateOf("") }
+    var openDateMillis by remember { mutableStateOf<Long?>(null) }
+    var openHour by remember { mutableIntStateOf(8) }
+    var openMinute by remember { mutableIntStateOf(0) }
+    var closeDateMillis by remember { mutableStateOf<Long?>(null) }
+    var closeHour by remember { mutableIntStateOf(10) }
+    var closeMinute by remember { mutableIntStateOf(0) }
+    var showDatePickerFor by remember { mutableStateOf<Boolean?>(null) }
+    var showTimePickerFor by remember { mutableStateOf<Boolean?>(null) }
     var questionCount by remember { mutableStateOf("30") }
     var points by remember { mutableStateOf(calculatePointsEach(30)) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -1707,7 +2078,7 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                 val result = withContext(Dispatchers.IO) {
                     context.contentResolver.openInputStream(uri)?.use { ExamExcelParser.parse(it) }
                 } ?: run {
-                    message = "Cannot open the selected Excel file."
+                    message = "Không thể mở file Excel đã chọn."
                     return@launch
                 }
 
@@ -1800,7 +2171,16 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) { message = "Please sign in again."; return }
         val durationMinutes = duration.toIntOrNull()
-        if (title.isBlank() || durationMinutes == null || durationMinutes < 1) { message = "Enter a title and valid duration."; return }
+        if (title.isBlank() || durationMinutes == null || durationMinutes < 1) { message = "Nhập tiêu đề và thời gian hợp lệ."; return }
+        val questionCountVal = questionCount.toIntOrNull()
+        if (questionCountVal == null || questionCountVal < 1) { message = "Nhập số lượng câu hỏi hợp lệ."; return }
+        if (questionCountVal > 500) { message = "Tối đa 500 câu hỏi mỗi đề thi."; return }
+        if (excelRows.isNotEmpty() && excelRows.size > 500) { message = "Excel file has ${excelRows.size} questions, maximum is 500."; return }
+        if (openDateMillis == null) { message = "Chọn thời gian mở."; return }
+        if (closeDateMillis == null) { message = "Chọn thời gian đóng."; return }
+        val openDt = formatDateTime(openDateMillis, openHour, openMinute) ?: return
+        val closeDt = formatDateTime(closeDateMillis, closeHour, closeMinute) ?: return
+        if (openDt >= closeDt) { message = "Thời gian mở phải trước thời gian đóng."; return }
         scope.launch {
             loading = true; message = null
             try {
@@ -1810,8 +2190,8 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                         title = title.trim(),
                         durationMinutes = durationMinutes,
                         scorePerQuestion = points.ifBlank { "1.0" },
-                        startTime = null,
-                        endTime = null,
+                        startTime = formatDateTime(openDateMillis, openHour, openMinute),
+                        endTime = formatDateTime(closeDateMillis, closeHour, closeMinute),
                         shuffleQuestions = randomQuestion,
                         shuffleAnswers = randomAnswer
                     )
@@ -1843,8 +2223,8 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                 } else {
                     message = if (response.success) "Exam created: ${createdExam?.code}" else response.message
                 }
-            } catch (exception: HttpException) { message = "Cannot save exam. Please check your account permission." }
-            catch (exception: Exception) { message = "Cannot save exam right now." }
+            } catch (exception: HttpException) { message = "Không thể lưu đề thi. Vui lòng kiểm tra quyền." }
+            catch (exception: Exception) { message = "Không thể lưu đề thi lúc này." }
             finally { loading = false }
         }
     }
@@ -1852,9 +2232,9 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
     AppBackground {
         if (showExcelConfirm) {
             ConfirmActionDialog(
-                title = "Create Exam From Excel",
-                message = "Imported file is valid with ${excelRows.size} question(s). Create the exam now?",
-                confirmLabel = if (loading) "Creating..." else "Create Exam",
+                title = "Tạo đề thi từ Excel",
+                message = "File Excel hợp lệ với ${excelRows.size} câu hỏi. Tạo đề thi ngay?",
+                confirmLabel = if (loading) "Đang tạo..." else "Tạo đề thi",
                 processing = loading,
                 onConfirm = {
                     showExcelConfirm = false
@@ -1864,7 +2244,7 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
             )
         }
 
-        ExamTopBar("Create Exam", onBack)
+        ExamTopBar("Tạo đề thi", onBack)
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -1880,8 +2260,71 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                 OutlinedTextField(duration, { duration = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Duration (minutes)") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(openTime, { openTime = it }, modifier = Modifier.weight(1f), label = { Text("Open time") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
-                    OutlinedTextField(closeTime, { closeTime = it }, modifier = Modifier.weight(1f), label = { Text("Close time") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                    DateTimeField(
+                        value = openDateMillis,
+                        hour = openHour,
+                        minute = openMinute,
+                        label = "Open time",
+                        modifier = Modifier.weight(1f),
+                        onDateClick = { showDatePickerFor = true },
+                        onTimeClick = { showTimePickerFor = true }
+                    )
+                    DateTimeField(
+                        value = closeDateMillis,
+                        hour = closeHour,
+                        minute = closeMinute,
+                        label = "Close time",
+                        modifier = Modifier.weight(1f),
+                        onDateClick = { showDatePickerFor = false },
+                        onTimeClick = { showTimePickerFor = false }
+                    )
+                }
+                if (showDatePickerFor != null) {
+                    val initial = if (showDatePickerFor == true) openDateMillis else closeDateMillis
+                    val state = rememberDatePickerState(initialSelectedDateMillis = initial ?: System.currentTimeMillis())
+                    DatePickerDialog(
+                        onDismissRequest = { showDatePickerFor = null },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                val millis = state.selectedDateMillis
+                                if (millis != null) {
+                                    if (showDatePickerFor == true) {
+                                        openDateMillis = millis
+                                    } else {
+                                        closeDateMillis = millis
+                                    }
+                                }
+                                showDatePickerFor = null
+                                showTimePickerFor = if (showDatePickerFor == true) true else false
+                            }) { Text("OK") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDatePickerFor = null }) { Text("Cancel") }
+                        }
+                    ) { DatePicker(state = state) }
+                }
+                if (showTimePickerFor != null) {
+                    val targetHour = if (showTimePickerFor == true) openHour else closeHour
+                    val targetMinute = if (showTimePickerFor == true) openMinute else closeMinute
+                    val timeState = rememberTimePickerState(initialHour = targetHour, initialMinute = targetMinute, is24Hour = true)
+                    AlertDialog(
+                        onDismissRequest = { showTimePickerFor = null },
+                        title = { Text(if (showTimePickerFor == true) "Open time" else "Close time") },
+                        text = { TimePicker(state = timeState, colors = TimePickerDefaults.colors()) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                if (showTimePickerFor == true) {
+                                    openHour = timeState.hour; openMinute = timeState.minute
+                                } else {
+                                    closeHour = timeState.hour; closeMinute = timeState.minute
+                                }
+                                showTimePickerFor = null
+                            }) { Text("OK") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showTimePickerFor = null }) { Text("Cancel") }
+                        }
+                    )
                 }
 
                 SectionTitle("Scoring")
@@ -2004,6 +2447,7 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditExamScreen(onBack: () -> Unit) {
     val exam = ExamAttemptStore.selectedExam.value
@@ -2011,20 +2455,58 @@ fun EditExamScreen(onBack: () -> Unit) {
     var randomAnswer by remember(exam?.id) { mutableStateOf(exam?.shuffleAnswers ?: true) }
     var title by remember(exam?.id) { mutableStateOf(exam?.title.orEmpty()) }
     var duration by remember(exam?.id) { mutableStateOf(exam?.durationMinutes?.toString() ?: "45") }
+    var questionCount by remember(exam?.id) { mutableStateOf(exam?.totalQuestions?.toString() ?: "30") }
     var points by remember(exam?.id) { mutableStateOf(exam?.scorePerQuestion ?: "1.0") }
+    var openDateMillis by remember(exam?.id) { mutableStateOf<Long?>(null) }
+    var openHour by remember(exam?.id) { mutableIntStateOf(8) }
+    var openMinute by remember(exam?.id) { mutableIntStateOf(0) }
+    var closeDateMillis by remember(exam?.id) { mutableStateOf<Long?>(null) }
+    var closeHour by remember(exam?.id) { mutableIntStateOf(10) }
+    var closeMinute by remember(exam?.id) { mutableIntStateOf(0) }
+    var showDatePickerFor by remember { mutableStateOf<Boolean?>(null) }
+    var showTimePickerFor by remember { mutableStateOf<Boolean?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var showUpdateConfirm by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val gson = remember { Gson() }
 
+    LaunchedEffect(exam?.id) {
+        if (exam != null) {
+            val parsedStart = exam.startTime.parseExamDateTime()
+            if (parsedStart != null) {
+                openDateMillis = parsedStart.dateMillis
+                openHour = parsedStart.hour
+                openMinute = parsedStart.minute
+            }
+            val parsedEnd = exam.endTime.parseExamDateTime()
+            if (parsedEnd != null) {
+                closeDateMillis = parsedEnd.dateMillis
+                closeHour = parsedEnd.hour
+                closeMinute = parsedEnd.minute
+            }
+        }
+    }
+
+    LaunchedEffect(questionCount) {
+        val total = questionCount.toIntOrNull() ?: 0
+        if (total > 0) {
+            points = calculatePointsEach(total)
+        }
+    }
+
     fun updateExam() {
         val selectedExam = exam
-        if (selectedExam == null) { message = "Select an exam before editing."; return }
+        if (selectedExam == null) { message = "Vui lòng chọn đề thi trước khi sửa."; return }
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) { message = "Please sign in again."; return }
         val durationMinutes = duration.toIntOrNull()
-        if (title.isBlank() || durationMinutes == null || durationMinutes < 1) { message = "Enter a title and valid duration."; return }
+        if (title.isBlank() || durationMinutes == null || durationMinutes < 1) { message = "Nhập tiêu đề và thời gian hợp lệ."; return }
+        val questionCountVal = questionCount.toIntOrNull()
+        if (questionCountVal == null || questionCountVal < 1) { message = "Nhập số lượng câu hỏi hợp lệ."; return }
+        if (questionCountVal > 500) { message = "Tối đa 500 câu hỏi mỗi đề thi."; return }
+        val openDt = formatDateTime(openDateMillis, openHour, openMinute)
+        val closeDt = formatDateTime(closeDateMillis, closeHour, closeMinute)
 
         scope.launch {
             loading = true; message = null
@@ -2036,8 +2518,8 @@ fun EditExamScreen(onBack: () -> Unit) {
                         title = title.trim(),
                         durationMinutes = durationMinutes,
                         scorePerQuestion = points.ifBlank { "1.0" },
-                        startTime = selectedExam.startTime,
-                        endTime = selectedExam.endTime,
+                        startTime = openDt,
+                        endTime = closeDt,
                         shuffleQuestions = randomQuestion,
                         shuffleAnswers = randomAnswer
                     )
@@ -2087,9 +2569,90 @@ fun EditExamScreen(onBack: () -> Unit) {
 
                 SectionTitle("Timing")
                 OutlinedTextField(duration, { duration = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Duration (minutes)") }, enabled = !loading && exam != null, shape = MaterialTheme.shapes.medium)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    DateTimeField(
+                        value = openDateMillis,
+                        hour = openHour,
+                        minute = openMinute,
+                        label = "Open time",
+                        modifier = Modifier.weight(1f),
+                        onDateClick = { showDatePickerFor = true },
+                        onTimeClick = { showTimePickerFor = true }
+                    )
+                    DateTimeField(
+                        value = closeDateMillis,
+                        hour = closeHour,
+                        minute = closeMinute,
+                        label = "Close time",
+                        modifier = Modifier.weight(1f),
+                        onDateClick = { showDatePickerFor = false },
+                        onTimeClick = { showTimePickerFor = false }
+                    )
+                }
+                if (showDatePickerFor != null) {
+                    val initial = if (showDatePickerFor == true) openDateMillis else closeDateMillis
+                    val state = rememberDatePickerState(initialSelectedDateMillis = initial ?: System.currentTimeMillis())
+                    DatePickerDialog(
+                        onDismissRequest = { showDatePickerFor = null },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                val millis = state.selectedDateMillis
+                                if (millis != null) {
+                                    if (showDatePickerFor == true) {
+                                        openDateMillis = millis
+                                    } else {
+                                        closeDateMillis = millis
+                                    }
+                                }
+                                showDatePickerFor = null
+                                showTimePickerFor = if (showDatePickerFor == true) true else false
+                            }) { Text("OK") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDatePickerFor = null }) { Text("Cancel") }
+                        }
+                    ) { DatePicker(state = state) }
+                }
+                if (showTimePickerFor != null) {
+                    val targetHour = if (showTimePickerFor == true) openHour else closeHour
+                    val targetMinute = if (showTimePickerFor == true) openMinute else closeMinute
+                    val timeState = rememberTimePickerState(initialHour = targetHour, initialMinute = targetMinute, is24Hour = true)
+                    AlertDialog(
+                        onDismissRequest = { showTimePickerFor = null },
+                        title = { Text(if (showTimePickerFor == true) "Open time" else "Close time") },
+                        text = { TimePicker(state = timeState, colors = TimePickerDefaults.colors()) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                if (showTimePickerFor == true) {
+                                    openHour = timeState.hour; openMinute = timeState.minute
+                                } else {
+                                    closeHour = timeState.hour; closeMinute = timeState.minute
+                                }
+                                showTimePickerFor = null
+                            }) { Text("OK") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showTimePickerFor = null }) { Text("Cancel") }
+                        }
+                    )
+                }
 
                 SectionTitle("Scoring")
-                OutlinedTextField(points, { points = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Points each") }, enabled = !loading && exam != null, shape = MaterialTheme.shapes.medium)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(value = questionCount, { questionCount = it }, modifier = Modifier.weight(1f), label = { Text("Questions") }, enabled = !loading && exam != null, shape = MaterialTheme.shapes.medium)
+                    OutlinedTextField(
+                        value = points,
+                        onValueChange = {},
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Points each") },
+                        enabled = false,
+                        readOnly = true,
+                        shape = MaterialTheme.shapes.medium
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                InfoBanner("Total exam score is fixed at 10.0. Points each question are calculated automatically.", AppBlue, Icons.Default.Info)
 
                 SectionTitle("Options")
                 Card(
@@ -2124,7 +2687,84 @@ fun EditExamScreen(onBack: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun DateTimeField(
+    value: Long?,
+    hour: Int,
+    minute: Int,
+    label: String,
+    modifier: Modifier = Modifier,
+    onDateClick: () -> Unit,
+    onTimeClick: () -> Unit
+) {
+    val displayText = if (value != null) {
+        val cal = Calendar.getInstance().apply { timeInMillis = value }
+        val fmt = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        "${fmt.format(cal.time)} ${"%02d:%02d".format(hour, minute)}"
+    } else {
+        "Not set"
+    }
+    Card(
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = AppSurface),
+        modifier = modifier.border(1.dp, AppCardBorder, MaterialTheme.shapes.medium)
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(label, color = AppMuted, style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(displayText, fontWeight = FontWeight.SemiBold, color = AppText, modifier = Modifier.weight(1f))
+                Icon(Icons.Default.DateRange, null, tint = AppIndigo, modifier = Modifier.size(18.dp).clickable { onDateClick() })
+                Spacer(Modifier.width(4.dp))
+                Icon(Icons.Default.Schedule, null, tint = AppIndigo, modifier = Modifier.size(18.dp).clickable { onTimeClick() })
+            }
+        }
+    }
+}
+
+private data class ExamDateTimeComponents(val dateMillis: Long, val hour: Int, val minute: Int)
+
+private fun String?.parseExamDateTime(): ExamDateTimeComponents? {
+    val raw = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val patterns = listOf(
+        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+        "yyyy-MM-dd'T'HH:mm:ssXXX",
+        "yyyy-MM-dd'T'HH:mm:ss",
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd HH:mm"
+    )
+    return patterns.firstNotNullOfOrNull { pattern ->
+        runCatching {
+            val sdf = SimpleDateFormat(pattern, Locale.US).apply {
+                isLenient = false
+                if (pattern.endsWith("'Z'")) {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }
+            }
+            val date = sdf.parse(raw) ?: return@firstNotNullOfOrNull null
+            val cal = Calendar.getInstance().apply { time = date }
+            ExamDateTimeComponents(date.time, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+        }.getOrNull()
+    }
+}
+
+private fun formatDateTime(dateMillis: Long?, hour: Int, minute: Int): String? {
+    if (dateMillis == null) return null
+    val cal = Calendar.getInstance().apply {
+        timeInMillis = dateMillis
+        set(Calendar.HOUR_OF_DAY, hour)
+        set(Calendar.MINUTE, minute)
+        set(Calendar.SECOND, 0)
+    }
+    val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
+    return fmt.format(cal.time)
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun AutoGenerateExamScreen(onBack: () -> Unit) {
     var title by remember { mutableStateOf("Generated Android Exam") }
     var subjects by remember { mutableStateOf<List<SubjectResponse>>(emptyList()) }
@@ -2139,6 +2779,20 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
     var message by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var catalogLoading by remember { mutableStateOf(false) }
+    var openDateMillis by remember { mutableStateOf<Long?>(null) }
+    var openHour by remember { mutableIntStateOf(8) }
+    var openMinute by remember { mutableIntStateOf(0) }
+    var closeDateMillis by remember { mutableStateOf<Long?>(null) }
+    var closeHour by remember { mutableIntStateOf(10) }
+    var closeMinute by remember { mutableIntStateOf(0) }
+    var showDatePickerFor by remember { mutableStateOf<Boolean?>(null) }
+    var showTimePickerFor by remember { mutableStateOf<Boolean?>(null) }
+    var addSubjectDialog by remember { mutableStateOf(false) }
+    var addTopicDialog by remember { mutableStateOf(false) }
+    var newSubjectName by remember { mutableStateOf("") }
+    var newTopicName by remember { mutableStateOf("") }
+    var addSubjectLoading by remember { mutableStateOf(false) }
+    var addTopicLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val gson = remember { Gson() }
 
@@ -2155,7 +2809,7 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
             selectedSubject = subjects.firstOrNull()
             message = if (subjects.isEmpty()) "No subjects available." else null
         } catch (exception: Exception) {
-            message = "Cannot load subjects right now."
+            message = "Không thể tải môn học lúc này."
         } finally {
             catalogLoading = false
         }
@@ -2177,7 +2831,7 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
         } catch (exception: Exception) {
             topics = emptyList()
             selectedTopic = null
-            message = "Cannot load topics right now."
+            message = "Không thể tải chủ đề lúc này."
         }
     }
 
@@ -2195,12 +2849,17 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
         val easyCount = easy.toIntOrNull()
         val mediumCount = medium.toIntOrNull()
         val hardCount = hard.toIntOrNull()
-        if (title.isBlank() || durationMinutes == null || durationMinutes < 1) { message = "Enter a title and valid duration."; return }
+        if (title.isBlank() || durationMinutes == null || durationMinutes < 1) { message = "Nhập tiêu đề và thời gian hợp lệ."; return }
         if (easyCount == null || mediumCount == null || hardCount == null || easyCount < 0 || mediumCount < 0 || hardCount < 0) {
             message = "Question counts must be valid numbers."
             return
         }
         if (easyCount + mediumCount + hardCount == 0) { message = "Select at least one question."; return }
+        if (openDateMillis == null) { message = "Chọn thời gian mở."; return }
+        if (closeDateMillis == null) { message = "Chọn thời gian đóng."; return }
+        val openDt = formatDateTime(openDateMillis, openHour, openMinute) ?: return
+        val closeDt = formatDateTime(closeDateMillis, closeHour, closeMinute) ?: return
+        if (openDt >= closeDt) { message = "Thời gian mở phải trước thời gian đóng."; return }
         scope.launch {
             loading = true; message = null
             try {
@@ -2214,7 +2873,9 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
                         topicId = selectedTopic?.id,
                         easyCount = easyCount,
                         mediumCount = mediumCount,
-                        hardCount = hardCount
+                        hardCount = hardCount,
+                        startTime = openDt,
+                        endTime = closeDt
                     )
                 )
                 message = if (response.success) "Exam generated: ${response.data?.code}" else response.message
@@ -2259,28 +2920,101 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             InfoBanner("Total exam score is fixed at 10.0. Points each question are calculated automatically.", AppBlue, Icons.Default.Info)
 
-            SectionTitle("Classification")
-            CatalogDropdown(
-                label = "Subject",
-                value = selectedSubject?.name ?: if (catalogLoading) "Loading subjects..." else "Select subject",
-                enabled = !loading && !catalogLoading && subjects.isNotEmpty(),
-                items = subjects,
-                itemText = { it.name },
-                onSelect = {
-                    selectedSubject = it
-                    selectedTopic = null
-                }
+            SectionTitle("Timing")
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                DateTimeField(
+                    value = openDateMillis,
+                    hour = openHour,
+                    minute = openMinute,
+                    label = "Open time",
+                    modifier = Modifier.weight(1f),
+                    onDateClick = { showDatePickerFor = true },
+                    onTimeClick = { showTimePickerFor = true }
+                )
+                DateTimeField(
+                    value = closeDateMillis,
+                    hour = closeHour,
+                    minute = closeMinute,
+                    label = "Close time",
+                    modifier = Modifier.weight(1f),
+                    onDateClick = { showDatePickerFor = false },
+                    onTimeClick = { showTimePickerFor = false }
+                )
+            }
+            if (showDatePickerFor != null) {
+                val initial = if (showDatePickerFor == true) openDateMillis else closeDateMillis
+                val state = rememberDatePickerState(initialSelectedDateMillis = initial ?: System.currentTimeMillis())
+                DatePickerDialog(
+                    onDismissRequest = { showDatePickerFor = null },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val millis = state.selectedDateMillis
+                            if (millis != null) {
+                                if (showDatePickerFor == true) {
+                                    openDateMillis = millis
+                                } else {
+                                    closeDateMillis = millis
+                                }
+                            }
+                            showDatePickerFor = null
+                            showTimePickerFor = if (showDatePickerFor == true) true else false
+                        }) { Text("OK") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDatePickerFor = null }) { Text("Cancel") }
+                    }
+                ) { DatePicker(state = state) }
+            }
+            if (showTimePickerFor != null) {
+                val targetHour = if (showTimePickerFor == true) openHour else closeHour
+                val targetMinute = if (showTimePickerFor == true) openMinute else closeMinute
+                val timeState = rememberTimePickerState(initialHour = targetHour, initialMinute = targetMinute, is24Hour = true)
+                AlertDialog(
+                    onDismissRequest = { showTimePickerFor = null },
+                    title = { Text(if (showTimePickerFor == true) "Open time" else "Close time") },
+                    text = { TimePicker(state = timeState, colors = TimePickerDefaults.colors()) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            if (showTimePickerFor == true) {
+                                openHour = timeState.hour; openMinute = timeState.minute
+                            } else {
+                                closeHour = timeState.hour; closeMinute = timeState.minute
+                            }
+                            showTimePickerFor = null
+                        }) { Text("OK") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showTimePickerFor = null }) { Text("Cancel") }
+                    }
+                )
+            }
+
+                SectionTitle("Phân loại")
+                CatalogDropdown(
+                    label = "Môn học",
+                    value = selectedSubject?.name ?: if (catalogLoading) "Đang tải môn học..." else "Chọn môn học",
+                    enabled = !loading && !catalogLoading && subjects.isNotEmpty(),
+                    items = subjects,
+                    itemText = { it.name },
+                    onSelect = {
+                        selectedSubject = it
+                        selectedTopic = null
+                    },
+                    addLabel = "+ Thêm môn học",
+                onAdd = { addSubjectDialog = true }
             )
             Spacer(Modifier.height(8.dp))
             CatalogDropdown(
-                label = "Topic",
-                value = selectedTopic?.name ?: "All topics",
+                label = "Chủ đề",
+                value = selectedTopic?.name ?: "Tất cả chủ đề",
                 enabled = !loading && topics.isNotEmpty(),
                 items = topics,
                 itemText = { it.name },
                 onSelect = { selectedTopic = it },
-                leadingClearItem = "All topics",
-                onClear = { selectedTopic = null }
+                leadingClearItem = "Tất cả chủ đề",
+                onClear = { selectedTopic = null },
+                addLabel = if (selectedSubject != null) "+ Thêm chủ đề" else null,
+                onAdd = if (selectedSubject != null) {{ addTopicDialog = true }} else null
             )
 
             SectionTitle("Questions by Difficulty")
@@ -2332,18 +3066,296 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
             PrimaryAction(if (loading) "Generating..." else "Generate Exam") { if (!loading) generateExam() }
             Spacer(Modifier.height(24.dp))
         }
+
+        if (addSubjectDialog) {
+            QuickAddDialog(
+                title = "Thêm môn học",
+                name = newSubjectName,
+                onNameChange = { newSubjectName = it },
+                onDismiss = { addSubjectDialog = false; newSubjectName = "" },
+                onConfirm = {
+                    val auth = SessionManager.authorizationHeader() ?: return@QuickAddDialog
+                    addSubjectLoading = true
+                    scope.launch {
+                        try {
+                            val response = ApiClient.createSubject(auth, SubjectCreateRequest(name = newSubjectName.trim()))
+                            if (response.success) {
+                                response.data?.let { subjects = subjects + it; selectedSubject = it; selectedTopic = null }
+                                message = "Đã thêm môn học."
+                            } else {
+                                message = response.message
+                            }
+                        } catch (e: Exception) {
+                            message = "Không thể thêm môn học."
+                        } finally {
+                            addSubjectLoading = false
+                            addSubjectDialog = false
+                            newSubjectName = ""
+                        }
+                    }
+                },
+                loading = addSubjectLoading
+            )
+        }
+
+        if (addTopicDialog) {
+            val subject = selectedSubject
+            if (subject == null) {
+                addTopicDialog = false
+            } else {
+                QuickAddDialog(
+                    title = "Thêm chủ đề cho ${subject.name}",
+                    name = newTopicName,
+                    onNameChange = { newTopicName = it },
+                    onDismiss = { addTopicDialog = false; newTopicName = "" },
+                    onConfirm = {
+                        val auth = SessionManager.authorizationHeader() ?: return@QuickAddDialog
+                        addTopicLoading = true
+                        scope.launch {
+                            try {
+                                val response = ApiClient.createTopic(auth, subject.id, TopicCreateRequest(name = newTopicName.trim()))
+                                if (response.success) {
+                                    response.data?.let { topics = topics + it; selectedTopic = it }
+                                    message = "Đã thêm chủ đề."
+                                } else {
+                                    message = response.message
+                                }
+                            } catch (e: Exception) {
+                                message = "Không thể thêm chủ đề."
+                            } finally {
+                                addTopicLoading = false
+                                addTopicDialog = false
+                                newTopicName = ""
+                            }
+                        }
+                    },
+                    loading = addTopicLoading
+                )
+            }
+        }
     }
 }
 
 @Composable
 fun LiveMonitoringScreen(onBack: () -> Unit) {
+    var exams by remember { mutableStateOf<List<ExamResponse>>(emptyList()) }
+    var selectedExam by remember { mutableStateOf<ExamResponse?>(null) }
+    var report by remember { mutableStateOf<ExamReportResponse?>(null) }
+    var auditLogs by remember { mutableStateOf<List<AuditLogResponse>>(emptyList()) }
+    var loadingExams by remember { mutableStateOf(true) }
+    var loadingReport by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun loadAuditLogs() {
+        scope.launch {
+            val auth = SessionManager.authorizationHeader() ?: return@launch
+            runCatching {
+                val response = ApiClient.getAuditLogs(auth)
+                if (response.success) {
+                    auditLogs = response.data.orEmpty()
+                        .filter { log ->
+                            selectedExam == null || log.resourceId == selectedExam?.id
+                        }
+                        .sortedByDescending { it.createdAt.orEmpty() }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val auth = SessionManager.authorizationHeader()
+        if (auth == null) {
+            message = "Please sign in again."
+            loadingExams = false
+            return@LaunchedEffect
+        }
+        loadingExams = true
+        try {
+            val response = ApiClient.getExams(auth)
+            exams = response.data.orEmpty()
+            selectedExam = exams.firstOrNull()
+            message = if (exams.isEmpty()) "No exams found." else null
+        } catch (e: Exception) {
+            message = "Cannot load exams."
+        } finally {
+            loadingExams = false
+        }
+    }
+
+    LaunchedEffect(selectedExam?.id) {
+        val exam = selectedExam ?: return@LaunchedEffect
+        val auth = SessionManager.authorizationHeader() ?: return@LaunchedEffect
+        loadingReport = true
+        try {
+            val response = ApiClient.getExamReport(auth, exam.id)
+            report = response.data
+        } catch (e: Exception) {
+            message = "Cannot load report."
+        } finally {
+            loadingReport = false
+        }
+        loadAuditLogs()
+    }
+
+    LaunchedEffect(selectedExam?.id) {
+        while (true) {
+            delay(10_000L)
+            loadAuditLogs()
+            val exam = selectedExam ?: continue
+            val auth = SessionManager.authorizationHeader() ?: continue
+            runCatching {
+                val response = ApiClient.getExamReport(auth, exam.id)
+                if (response.success) report = response.data
+            }
+        }
+    }
+
     AppBackground {
         ExamTopBar("Live Monitoring", onBack)
-        SectionTitle("Active Candidates")
-        InfoBanner("Live monitoring is not available yet.", AppAmber, Icons.Default.Info)
-        Spacer(Modifier.height(12.dp))
-        SectionTitle("Realtime Log")
-        InfoBanner("Activity history is not available yet.", AppAmber, Icons.Default.Info)
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
+            SectionTitle("Select Exam")
+            CatalogDropdown(
+                label = "Exam",
+                value = selectedExam?.let { "${it.code} - ${it.title}" }
+                    ?: if (loadingExams) "Loading..." else "No exam selected",
+                enabled = !loadingExams && exams.isNotEmpty(),
+                items = exams,
+                itemText = { "${it.code} - ${it.title}" },
+                onSelect = { selectedExam = it; message = null }
+            )
+
+            message?.let {
+                Spacer(Modifier.height(8.dp))
+                InfoBanner(it, AppAmber, Icons.Default.Info)
+            }
+
+            if (loadingReport) {
+                Spacer(Modifier.height(8.dp))
+                LoadingStateCard("Loading candidates...")
+            }
+
+            report?.let { data ->
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    MetricCard("Total", data.totalResults.toString(), "candidates", AppBlue, Icons.Default.Person, modifier = Modifier.weight(1f).height(90.dp))
+                    MetricCard("Submitted", data.submittedCount.toString(), "done", AppMint, Icons.Default.CheckCircle, modifier = Modifier.weight(1f).height(90.dp))
+                    MetricCard("Doing", (data.totalResults - data.submittedCount).toString(), "in progress", AppAmber, Icons.Default.Info, modifier = Modifier.weight(1f).height(90.dp))
+                }
+                Spacer(Modifier.height(8.dp))
+                SectionTitle("Candidates")
+                val results = data.results.orEmpty()
+                if (results.isEmpty()) {
+                    InfoBanner("No candidates yet.", AppAmber, Icons.Default.Info)
+                } else {
+                    results.forEach { result ->
+                        val statusColor = reportStatusColor(result.status)
+                        val studentName = result.studentName?.takeIf { it.isNotBlank() }
+                            ?: result.username?.takeIf { it.isNotBlank() }
+                            ?: result.studentCode?.takeIf { it.isNotBlank() }
+                            ?: "Student #${result.studentId}"
+                        Card(
+                            shape = MaterialTheme.shapes.large,
+                            colors = CardDefaults.cardColors(containerColor = AppSurface),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                                .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+                        ) {
+                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier
+                                        .size(40.dp)
+                                        .background(statusColor.copy(alpha = 0.12f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        studentName.first().toString().uppercase(),
+                                        fontWeight = FontWeight.Bold,
+                                        color = statusColor
+                                    )
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(studentName, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        reportStatusLabel(result.status),
+                                        color = statusColor,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                                Text(
+                                    result.score?.takeIf { it.isNotBlank() }?.let { "$it / 10" } ?: "--",
+                                    fontWeight = FontWeight.Bold,
+                                    color = statusColor
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            SectionTitle("Activity Log")
+            if (auditLogs.isEmpty()) {
+                InfoBanner("No activity recorded yet.", AppAmber, Icons.Default.Info)
+            } else {
+                auditLogs.forEach { log ->
+                    val logColor = when (log.action) {
+                        "SCREENSHOT", "APP_EXIT" -> AppRed
+                        "FOCUS_LOST" -> AppAmber
+                        "FOCUS_RESTORED" -> AppMint
+                        else -> AppMuted
+                    }
+                    val logIcon = when (log.action) {
+                        "SCREENSHOT" -> Icons.Default.Warning
+                        "APP_EXIT" -> Icons.AutoMirrored.Filled.ExitToApp
+                        "FOCUS_LOST" -> Icons.Default.VisibilityOff
+                        "FOCUS_RESTORED" -> Icons.Default.Visibility
+                        else -> Icons.Default.Info
+                    }
+                    Card(
+                        shape = MaterialTheme.shapes.large,
+                        colors = CardDefaults.cardColors(containerColor = AppSurface),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp)
+                            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+                    ) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier
+                                    .size(34.dp)
+                                    .background(logColor.copy(alpha = 0.1f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(logIcon, null, tint = logColor, modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(log.username ?: "Unknown", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    log.action + log.reason?.let { " - $it" }.orEmpty(),
+                                    color = logColor,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                            Text(
+                                log.createdAt?.replace("T", " ")?.take(16) ?: "",
+                                color = AppMuted,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(ScreenBottomPadding))
+        }
     }
 }
 
@@ -2534,7 +3546,7 @@ fun ReportDashboardScreen(onBack: () -> Unit) {
             }
 
             report?.let { data ->
-                SectionTitle("Overview")
+        SectionTitle("Tổng quan")
                 MetricCard("Results", data.totalResults.toString(), "records", AppBlue, Icons.Default.Assessment)
                 Spacer(Modifier.height(8.dp))
                 MetricCard("Submitted", data.submittedCount.toString(), "submitted", AppMint, Icons.Default.CheckCircle)

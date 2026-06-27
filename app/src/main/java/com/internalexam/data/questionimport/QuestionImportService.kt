@@ -48,6 +48,7 @@ object QuestionImportService {
                         content = row.content,
                         type = row.type,
                         difficulty = row.difficulty,
+                        imageUrl = null,
                         answers = listOf(
                             AnswerCreateRequest(
                                 content = row.content,

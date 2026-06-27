@@ -51,6 +51,14 @@ object ApiClient {
         }
     }
 
+    suspend fun uploadFile(authorization: String, fileName: String, fileBytes: ByteArray, mimeType: String): ApiResponse<FileUploadResponse> {
+        return callBackend {
+            val body = fileBytes.toRequestBody(mimeType.toMediaType())
+            val part = MultipartBody.Part.createFormData("file", fileName, body)
+            it.uploadFile(authorization, part)
+        }
+    }
+
     suspend fun createExam(authorization: String, request: ExamCreateRequest): ApiResponse<ExamResponse> {
         return callBackend { it.createExam(authorization, request) }
     }
@@ -75,8 +83,16 @@ object ApiClient {
         return callBackend { it.getSubjects(authorization) }
     }
 
+    suspend fun createSubject(authorization: String, request: SubjectCreateRequest): ApiResponse<SubjectResponse> {
+        return callBackend { it.createSubject(authorization, request) }
+    }
+
     suspend fun getTopics(authorization: String, subjectId: Long): ApiResponse<List<TopicResponse>> {
         return callBackend { it.getTopics(authorization, subjectId) }
+    }
+
+    suspend fun createTopic(authorization: String, subjectId: Long, request: TopicCreateRequest): ApiResponse<TopicResponse> {
+        return callBackend { it.createTopic(authorization, subjectId, request) }
     }
 
     suspend fun generateExam(authorization: String, request: ExamGenerateRequest): ApiResponse<ExamResponse> {
@@ -163,6 +179,10 @@ object ApiClient {
 
     suspend fun getAuditLogs(authorization: String): ApiResponse<List<AuditLogResponse>> {
         return callBackend { it.getAuditLogs(authorization) }
+    }
+
+    suspend fun createAuditLog(authorization: String, request: AuditLogCreateRequest): ApiResponse<AuditLogResponse> {
+        return callBackend { it.createAuditLog(authorization, request) }
     }
 
     private suspend fun <T> callBackend(block: suspend (AuthApi) -> T): T {

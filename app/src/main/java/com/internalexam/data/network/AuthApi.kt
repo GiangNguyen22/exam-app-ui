@@ -41,6 +41,13 @@ interface AuthApi {
         @Part file: MultipartBody.Part
     ): ApiResponse<QuestionImportResponse>
 
+    @Multipart
+    @POST("api/files/upload")
+    suspend fun uploadFile(
+        @Header("Authorization") authorization: String,
+        @Part file: MultipartBody.Part
+    ): ApiResponse<FileUploadResponse>
+
     @POST("api/exams")
     suspend fun createExam(
         @Header("Authorization") authorization: String,
@@ -75,11 +82,24 @@ interface AuthApi {
         @Header("Authorization") authorization: String
     ): ApiResponse<List<SubjectResponse>>
 
+    @POST("api/subjects")
+    suspend fun createSubject(
+        @Header("Authorization") authorization: String,
+        @Body request: SubjectCreateRequest
+    ): ApiResponse<SubjectResponse>
+
     @GET("api/subjects/{subjectId}/topics")
     suspend fun getTopics(
         @Header("Authorization") authorization: String,
         @Path("subjectId") subjectId: Long
     ): ApiResponse<List<TopicResponse>>
+
+    @POST("api/subjects/{subjectId}/topics")
+    suspend fun createTopic(
+        @Header("Authorization") authorization: String,
+        @Path("subjectId") subjectId: Long,
+        @Body request: TopicCreateRequest
+    ): ApiResponse<TopicResponse>
 
     @POST("api/exams/generate")
     suspend fun generateExam(
@@ -189,4 +209,11 @@ interface AuthApi {
     suspend fun getAuditLogs(
         @Header("Authorization") authorization: String
     ): ApiResponse<List<AuditLogResponse>>
+
+    @POST("api/audit-logs")
+    suspend fun createAuditLog(
+        @Header("Authorization") authorization: String,
+        @Body request: AuditLogCreateRequest
+    ): ApiResponse<AuditLogResponse>
+
 }

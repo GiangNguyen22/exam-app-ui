@@ -24,6 +24,7 @@ data class QuestionCreateRequest(
     val content: String,
     val type: String,
     val difficulty: String,
+    val imageUrl: String?,
     val answers: List<AnswerCreateRequest>
 )
 
@@ -34,15 +35,26 @@ data class QuestionResponse(
     val topicId: Long?,
     val topicName: String?,
     val content: String,
+    val imageUrl: String?,
     val type: String?,
     val difficulty: String?,
     val answers: List<AnswerOptionResponse>?
+)
+
+data class SubjectCreateRequest(
+    val name: String,
+    val description: String? = null
 )
 
 data class SubjectResponse(
     val id: Long,
     val name: String,
     val description: String?
+)
+
+data class TopicCreateRequest(
+    val name: String,
+    val description: String? = null
 )
 
 data class TopicResponse(
@@ -80,7 +92,9 @@ data class ExamGenerateRequest(
     val topicId: Long?,
     val easyCount: Int,
     val mediumCount: Int,
-    val hardCount: Int
+    val hardCount: Int,
+    val startTime: String?,
+    val endTime: String?
 )
 
 data class ExamResponse(
@@ -177,6 +191,7 @@ data class ExamQuestionResponse(
     val subjectId: Long?,
     val topicId: Long?,
     val content: String,
+    val imageUrl: String?,
     val type: String?,
     val difficulty: String?,
     val answers: List<AnswerOptionResponse>?
@@ -195,6 +210,7 @@ data class ExamQuestionCreateRequest(
     val content: String,
     val type: String,
     val difficulty: String,
+    val imageUrl: String?,
     val orderIndex: Int?,
     val score: String?,
     val answers: List<AnswerCreateRequest>
@@ -251,6 +267,13 @@ data class RolePermissionsUpdateRequest(
     val permissions: List<String>
 )
 
+data class AuditLogCreateRequest(
+    val action: String,
+    val resourceType: String?,
+    val resourceId: Long?,
+    val reason: String?
+)
+
 data class AuditLogResponse(
     val id: Long,
     val userId: Long?,
@@ -276,4 +299,9 @@ data class QuestionImportResponse(
     val importedQuestions: Int,
     val importedAnswers: Int,
     val errors: List<QuestionImportErrorResponse>?
+)
+
+data class FileUploadResponse(
+    val fileName: String,
+    val url: String
 )

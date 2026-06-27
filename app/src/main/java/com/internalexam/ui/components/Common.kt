@@ -85,7 +85,7 @@ fun AppBackground(content: @Composable ColumnScope.() -> Unit) {
 
 /* ── Top bar ── */
 @Composable
-fun LoadingStateCard(message: String = "Loading...") {
+fun LoadingStateCard(message: String = "\u0110ang t\u1ea3i...") {
     Card(
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = AppSurface),
@@ -112,7 +112,7 @@ fun ExamTopBar(title: String, onBack: (() -> Unit)? = null) {
         title = { Text(title, fontWeight = FontWeight.Bold) },
         navigationIcon = {
             if (onBack != null) IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Quay l\u1ea1i")
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
