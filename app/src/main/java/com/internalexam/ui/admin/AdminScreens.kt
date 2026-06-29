@@ -585,7 +585,7 @@ fun RolePermissionScreen(onBack: () -> Unit) {
             if (isLoading) {
                 item { LoadingStateCard("Đang tải phân quyền...") }
             } else if (roles.isEmpty() || permissions.isEmpty()) {
-                item { InfoBanner("Chưa có role hoặc permission để cấu hình.", AppAmber, Icons.Default.Security) }
+                item { InfoBanner("Chưa có vai trò hoặc quyền để cấu hình.", AppAmber, Icons.Default.Security) }
             } else {
                 item {
                     SectionTitle("Vai trò")
@@ -970,7 +970,7 @@ private fun RoleSelector(
 }
 
 private fun Role.label(): String = when (this) {
-    Role.ADMIN -> "Admin"
+    Role.ADMIN -> "Quản trị viên"
     Role.TEACHER -> "Giáo viên"
     Role.STUDENT -> "Học sinh"
 }

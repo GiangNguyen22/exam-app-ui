@@ -265,7 +265,7 @@ fun TeacherExamListScreen(
                         Column(Modifier.padding(16.dp)) {
                             Text(exam.title, style = MaterialTheme.typography.titleLarge)
                             Spacer(Modifier.height(4.dp))
-                            Text("Code ${exam.code} - ID ${exam.id}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                            Text("Mã ${exam.code} - ID ${exam.id}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
                             Spacer(Modifier.height(12.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                                 OutlinedButton(onClick = { onViewQuestions(exam) }, modifier = Modifier.weight(1f)) {
@@ -344,7 +344,7 @@ fun ExamQuestionListScreen(
             Spacer(Modifier.height(12.dp))
         }
         if (isLoading) {
-            LoadingStateCard("Loading questions...")
+            LoadingStateCard("Đang tải câu hỏi...")
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),
@@ -410,7 +410,7 @@ fun TeacherDashboardScreen(
     LaunchedEffect(Unit) {
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) {
-            message = "Please sign in again."
+            message = "Vui lòng đăng nhập lại."
             return@LaunchedEffect
         }
         try {
@@ -433,7 +433,7 @@ fun TeacherDashboardScreen(
             StatusPill(NetworkState.ONLINE)
         }
 
-        SectionTitle("Overview")
+        SectionTitle("Tổng quan")
         if (message != null) {
             InfoBanner(message.orEmpty(), AppAmber, Icons.Default.Info)
             Spacer(Modifier.height(10.dp))
@@ -997,7 +997,7 @@ fun CreateQuestionScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) {
-            message = "Please sign in again."
+            message = "Vui lòng đăng nhập lại."
             return@LaunchedEffect
         }
 
@@ -1574,7 +1574,7 @@ fun EditQuestionScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) {
-            message = "Please sign in again."
+            message = "Vui lòng đăng nhập lại."
             return@LaunchedEffect
         }
         catalogLoading = true
@@ -1614,9 +1614,9 @@ fun EditQuestionScreen(onBack: () -> Unit) {
         val subject = selectedSubject
         val authorization = SessionManager.authorizationHeader()
         if (examQuestion == null && bankQuestion == null) { message = "Vui lòng chọn câu hỏi trước khi sửa."; return }
-        if (authorization == null) { message = "Please sign in again."; return }
+        if (authorization == null) { message = "Vui lòng đăng nhập lại."; return }
         if (subject == null) { message = "Vui lòng chọn môn học."; return }
-        if (content.isBlank()) { message = "Question content is required."; return }
+        if (content.isBlank()) { message = "Vui lòng nhập nội dung câu hỏi."; return }
         val answerEntries = buildAnswerEntries()
         val minAnswers = if (type == QuestionType.FILL_BLANK) 1 else 2
         if (answerEntries.size < minAnswers) {
@@ -1737,8 +1737,8 @@ fun EditQuestionScreen(onBack: () -> Unit) {
                     Icons.Default.Info
                 )
 
-                SectionTitle("Question Content")
-                OutlinedTextField(content, { content = it }, modifier = Modifier.fillMaxWidth().height(120.dp), label = { Text("Enter the question text") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                SectionTitle("Nội dung câu hỏi")
+                OutlinedTextField(content, { content = it }, modifier = Modifier.fillMaxWidth().height(120.dp), label = { Text("Nhập nội dung câu hỏi") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedButton(
@@ -2044,7 +2044,7 @@ private fun QuickAddDialog(
 fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
     var randomQuestion by remember { mutableStateOf(true) }
     var randomAnswer by remember { mutableStateOf(true) }
-    var title by remember { mutableStateOf("Android Practice Exam") }
+    var title by remember { mutableStateOf("Đề thi thực hành Android") }
     var duration by remember { mutableStateOf("45") }
     var openDateMillis by remember { mutableStateOf<Long?>(null) }
     var openHour by remember { mutableIntStateOf(8) }
@@ -2084,26 +2084,26 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
 
                 excelRows = result.rows
                 excelFileLabel = if (result.rows.isNotEmpty()) {
-                    "Selected Exam Excel: ${result.rows.size} valid question(s)"
+                    "Đã chọn Excel đề thi: ${result.rows.size} câu hỏi hợp lệ"
                 } else {
                     null
                 }
                 questionCount = result.rows.size.takeIf { it > 0 }?.toString() ?: questionCount
-                excelParseErrors = result.failures.take(5).map { "row ${it.rowNumber}: ${it.message}" }
+                excelParseErrors = result.failures.take(5).map { "hàng ${it.rowNumber}: ${it.message}" }
                 message = when {
                     result.rows.isNotEmpty() && result.failures.isEmpty() -> {
                         showExcelConfirm = true
-                        "Exam Excel is valid. Review and confirm exam creation."
+                        "File Excel đề thi hợp lệ. Kiểm tra và xác nhận tạo đề thi."
                     }
-                    result.rows.isNotEmpty() -> "Loaded ${result.rows.size} question(s); ${result.failures.size} row(s) need review."
-                    else -> result.failures.firstOrNull()?.message ?: "The selected file is not a valid Exam Excel file."
+                    result.rows.isNotEmpty() -> "Đã tải ${result.rows.size} câu hỏi; ${result.failures.size} hàng cần xem lại."
+                    else -> result.failures.firstOrNull()?.message ?: "File đã chọn không phải file Excel đề thi hợp lệ."
                 }
             } catch (exception: Exception) {
                 excelRows = emptyList()
                 excelFileLabel = null
                 excelParseErrors = emptyList()
                 showExcelConfirm = false
-                message = "Cannot read the selected Excel file."
+                message = "Không thể đọc file Excel đã chọn."
             } finally {
                 excelLoading = false
             }
@@ -2142,12 +2142,12 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                     } ?: error("Cannot open output stream")
                 }
                 message = if (subjectNames.isEmpty()) {
-                    "Excel template saved. Subject and topic lists were not loaded."
+                    "Đã lưu mẫu Excel. Danh sách môn học và chủ đề chưa được tải."
                 } else {
-                    "Excel template saved with catalog dropdowns."
+                    "Đã lưu mẫu Excel với danh mục môn học và chủ đề."
                 }
             } catch (exception: Exception) {
-                message = "Cannot save Excel template."
+                message = "Không thể lưu mẫu Excel."
             } finally {
                 templateLoading = false
             }
@@ -2169,13 +2169,13 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
 
     fun saveExam() {
         val authorization = SessionManager.authorizationHeader()
-        if (authorization == null) { message = "Please sign in again."; return }
+        if (authorization == null) { message = "Vui lòng đăng nhập lại."; return }
         val durationMinutes = duration.toIntOrNull()
         if (title.isBlank() || durationMinutes == null || durationMinutes < 1) { message = "Nhập tiêu đề và thời gian hợp lệ."; return }
         val questionCountVal = questionCount.toIntOrNull()
         if (questionCountVal == null || questionCountVal < 1) { message = "Nhập số lượng câu hỏi hợp lệ."; return }
         if (questionCountVal > 500) { message = "Tối đa 500 câu hỏi mỗi đề thi."; return }
-        if (excelRows.isNotEmpty() && excelRows.size > 500) { message = "Excel file has ${excelRows.size} questions, maximum is 500."; return }
+        if (excelRows.isNotEmpty() && excelRows.size > 500) { message = "File Excel có ${excelRows.size} câu hỏi, tối đa là 500."; return }
         if (openDateMillis == null) { message = "Chọn thời gian mở."; return }
         if (closeDateMillis == null) { message = "Chọn thời gian đóng."; return }
         val openDt = formatDateTime(openDateMillis, openHour, openMinute) ?: return
@@ -2205,23 +2205,23 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                         defaultScore = points.ifBlank { null }
                     )
                     message = if (importResult.failures.isEmpty()) {
-                        "Exam created: ${createdExam.code}. Imported ${importResult.createdCount} question(s)."
+                        "Đã tạo đề thi: ${createdExam.code}. Đã nhập ${importResult.createdCount} câu hỏi."
                     } else if (importResult.createdCount == 0) {
                         runCatching { ApiClient.deleteExam(authorization, createdExam.id) }
                         val sampleFailures = importResult.failures.take(3).joinToString("; ") {
-                            "row ${it.rowNumber}: ${it.message}"
+                            "hàng ${it.rowNumber}: ${it.message}"
                         }
-                        val moreFailures = if (importResult.failures.size > 3) " +${importResult.failures.size - 3} more" else ""
-                        "Exam was not created because no question could be imported. Check SUBJECT/TOPIC values in the Excel file. $sampleFailures$moreFailures"
+                        val moreFailures = if (importResult.failures.size > 3) " +${importResult.failures.size - 3} nữa" else ""
+                        "Không tạo được đề thi vì không thể nhập câu hỏi. Kiểm tra giá trị MÔN HỌC/CHỦ ĐỀ trong file Excel. $sampleFailures$moreFailures"
                     } else {
                         val sampleFailures = importResult.failures.take(3).joinToString("; ") {
-                            "row ${it.rowNumber}: ${it.message}"
+                            "hàng ${it.rowNumber}: ${it.message}"
                         }
-                        val moreFailures = if (importResult.failures.size > 3) " +${importResult.failures.size - 3} more" else ""
-                        "Exam created: ${createdExam.code}. Imported ${importResult.createdCount}/${importResult.totalCount} question(s). $sampleFailures$moreFailures"
+                        val moreFailures = if (importResult.failures.size > 3) " +${importResult.failures.size - 3} nữa" else ""
+                        "Đã tạo đề thi: ${createdExam.code}. Đã nhập ${importResult.createdCount}/${importResult.totalCount} câu hỏi. $sampleFailures$moreFailures"
                     }
                 } else {
-                    message = if (response.success) "Exam created: ${createdExam?.code}" else response.message
+                    message = if (response.success) "Đã tạo đề thi: ${createdExam?.code}" else response.message
                 }
             } catch (exception: HttpException) { message = "Không thể lưu đề thi. Vui lòng kiểm tra quyền." }
             catch (exception: Exception) { message = "Không thể lưu đề thi lúc này." }
@@ -2251,20 +2251,20 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
             item {
-                SectionTitle("Exam Details")
-                OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Exam title") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                SectionTitle("Thông tin đề thi")
+                OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Tiêu đề đề thi") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
                 Spacer(Modifier.height(8.dp))
-                InfoBanner("Questions imported from Excel use SUBJECT and TOPIC values inside the file. The exam itself does not use a separate subject field.", AppBlue, Icons.Default.Info)
+                InfoBanner("Câu hỏi nhập từ Excel sử dụng giá trị MÔN HỌC và CHỦ ĐỀ trong file. Đề thi không sử dụng trường môn học riêng.", AppBlue, Icons.Default.Info)
 
-                SectionTitle("Timing")
-                OutlinedTextField(duration, { duration = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Duration (minutes)") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                SectionTitle("Thời gian")
+                OutlinedTextField(duration, { duration = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Thời gian (phút)") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     DateTimeField(
                         value = openDateMillis,
                         hour = openHour,
                         minute = openMinute,
-                        label = "Open time",
+                        label = "Giờ mở",
                         modifier = Modifier.weight(1f),
                         onDateClick = { showDatePickerFor = true },
                         onTimeClick = { showTimePickerFor = true }
@@ -2273,7 +2273,7 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                         value = closeDateMillis,
                         hour = closeHour,
                         minute = closeMinute,
-                        label = "Close time",
+                        label = "Giờ đóng",
                         modifier = Modifier.weight(1f),
                         onDateClick = { showDatePickerFor = false },
                         onTimeClick = { showTimePickerFor = false }
@@ -2299,7 +2299,7 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                             }) { Text("OK") }
                         },
                         dismissButton = {
-                            TextButton(onClick = { showDatePickerFor = null }) { Text("Cancel") }
+                            TextButton(onClick = { showDatePickerFor = null }) { Text("Hủy") }
                         }
                     ) { DatePicker(state = state) }
                 }
@@ -2309,7 +2309,7 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                     val timeState = rememberTimePickerState(initialHour = targetHour, initialMinute = targetMinute, is24Hour = true)
                     AlertDialog(
                         onDismissRequest = { showTimePickerFor = null },
-                        title = { Text(if (showTimePickerFor == true) "Open time" else "Close time") },
+                        title = { Text(if (showTimePickerFor == true) "Giờ mở" else "Giờ đóng") },
                         text = { TimePicker(state = timeState, colors = TimePickerDefaults.colors()) },
                         confirmButton = {
                             TextButton(onClick = {
@@ -2322,30 +2322,30 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                             }) { Text("OK") }
                         },
                         dismissButton = {
-                            TextButton(onClick = { showTimePickerFor = null }) { Text("Cancel") }
+                            TextButton(onClick = { showTimePickerFor = null }) { Text("Hủy") }
                         }
                     )
                 }
 
-                SectionTitle("Scoring")
+                SectionTitle("Tính điểm")
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(questionCount, { questionCount = it }, modifier = Modifier.weight(1f), label = { Text("Questions") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+                    OutlinedTextField(questionCount, { questionCount = it }, modifier = Modifier.weight(1f), label = { Text("Câu hỏi") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
                     OutlinedTextField(
                         value = points,
                         onValueChange = {},
                         modifier = Modifier.weight(1f),
-                        label = { Text("Points each") },
+                        label = { Text("Điểm mỗi câu") },
                         enabled = false,
                         readOnly = true,
                         shape = MaterialTheme.shapes.medium
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-                InfoBanner("Total exam score is fixed at 10.0. Points each question are calculated automatically.", AppBlue, Icons.Default.Info)
+                InfoBanner("Tổng điểm đề thi cố định là 10.0. Điểm mỗi câu được tính tự động.", AppBlue, Icons.Default.Info)
 
-                SectionTitle("Excel Import")
+                SectionTitle("Nhập Excel")
                 InfoBanner(
-                    "This screen expects the Exam Excel format. Question Bank Excel files will not work here.",
+                    "Màn hình này sử dụng định dạng Excel đề thi. File Excel ngân hàng câu hỏi sẽ không hoạt động ở đây.",
                     AppBlue,
                     Icons.Default.Info
                 )
@@ -2361,7 +2361,7 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                     ) {
                         Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(if (templateLoading) "Saving..." else "Template")
+                        Text(if (templateLoading) "Đang lưu..." else "Mẫu")
                     }
                     OutlinedButton(
                         onClick = { excelLauncher.launch(arrayOf(excelMimeType)) },
@@ -2373,7 +2373,7 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                     ) {
                         Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(if (excelLoading) "Reading..." else "Choose Exam Excel")
+                        Text(if (excelLoading) "Đang đọc..." else "Chọn Excel đề thi")
                     }
                 }
                 excelFileLabel?.let {
@@ -2385,7 +2385,7 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                     InfoBanner(excelParseErrors.joinToString("; "), AppAmber, Icons.Default.Warning)
                 }
 
-                SectionTitle("Options")
+                SectionTitle("Tùy chọn")
                 Card(
                     shape = MaterialTheme.shapes.large,
                     colors = CardDefaults.cardColors(containerColor = AppSurface),
@@ -2395,12 +2395,12 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column { Text("Randomize questions", fontWeight = FontWeight.Medium); Text("Shuffle question order", color = AppMuted, style = MaterialTheme.typography.bodyMedium) }
+                            Column { Text("Xáo trộn câu hỏi", fontWeight = FontWeight.Medium); Text("Xáo trộn thứ tự câu hỏi", color = AppMuted, style = MaterialTheme.typography.bodyMedium) }
                             Switch(randomQuestion, { randomQuestion = it }, colors = SwitchDefaults.colors(checkedTrackColor = AppIndigo))
                         }
                         HorizontalDivider(Modifier.padding(vertical = 10.dp), color = AppCardBorder)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column { Text("Randomize answers", fontWeight = FontWeight.Medium); Text("Shuffle answer options", color = AppMuted, style = MaterialTheme.typography.bodyMedium) }
+                            Column { Text("Xáo trộn đáp án", fontWeight = FontWeight.Medium); Text("Xáo trộn thứ tự đáp án", color = AppMuted, style = MaterialTheme.typography.bodyMedium) }
                             Switch(randomAnswer, { randomAnswer = it }, colors = SwitchDefaults.colors(checkedTrackColor = AppIndigo))
                         }
                     }
@@ -2409,11 +2409,11 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                 if (message != null) {
                     Spacer(Modifier.height(8.dp))
                     val currentMessage = message.orEmpty()
-                    val successMessage = currentMessage.startsWith("Exam created") ||
-                        currentMessage.startsWith("Loaded") ||
-                        currentMessage.startsWith("Excel template saved")
-                    val warningMessage = currentMessage.contains("need review") ||
-                        currentMessage.startsWith("No valid questions")
+                    val successMessage = currentMessage.startsWith("Đã tạo đề thi") ||
+                        currentMessage.startsWith("Đã tải") ||
+                        currentMessage.startsWith("Đã lưu mẫu Excel")
+                    val warningMessage = currentMessage.contains("cần xem lại") ||
+                        currentMessage.startsWith("File đã chọn không phải")
                     InfoBanner(
                         currentMessage,
                         when {
@@ -2433,13 +2433,13 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = { saveExam() }, modifier = Modifier
                         .weight(1f)
-                        .height(48.dp), shape = MaterialTheme.shapes.medium, enabled = !loading) { Text(if (loading) "Saving..." else "Save Exam") }
+                        .height(48.dp), shape = MaterialTheme.shapes.medium, enabled = !loading) { Text(if (loading) "Đang lưu..." else "Lưu đề thi") }
                     Button(onClick = onGenerate, modifier = Modifier
                         .weight(1f)
                         .height(48.dp), shape = MaterialTheme.shapes.medium, colors = ButtonDefaults.buttonColors(containerColor = AppViolet)) {
                         Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Auto Generate")
+                        Text("Tự động tạo")
                     }
                 }
             }
@@ -2455,7 +2455,14 @@ fun EditExamScreen(onBack: () -> Unit) {
     var randomAnswer by remember(exam?.id) { mutableStateOf(exam?.shuffleAnswers ?: true) }
     var title by remember(exam?.id) { mutableStateOf(exam?.title.orEmpty()) }
     var duration by remember(exam?.id) { mutableStateOf(exam?.durationMinutes?.toString() ?: "45") }
-    var questionCount by remember(exam?.id) { mutableStateOf(exam?.totalQuestions?.toString() ?: "30") }
+    var questionCount by remember(exam?.id) {
+        val raw = exam?.totalQuestions
+        val count = if (raw != null && raw > 0) raw.toString()
+        else exam?.scorePerQuestion?.toDoubleOrNull()?.let { score ->
+            if (score > 0) "%.0f".format(10.0 / score) else null
+        } ?: "30"
+        mutableStateOf(count)
+    }
     var points by remember(exam?.id) { mutableStateOf(exam?.scorePerQuestion ?: "1.0") }
     var openDateMillis by remember(exam?.id) { mutableStateOf<Long?>(null) }
     var openHour by remember(exam?.id) { mutableIntStateOf(8) }
@@ -2499,7 +2506,7 @@ fun EditExamScreen(onBack: () -> Unit) {
         val selectedExam = exam
         if (selectedExam == null) { message = "Vui lòng chọn đề thi trước khi sửa."; return }
         val authorization = SessionManager.authorizationHeader()
-        if (authorization == null) { message = "Please sign in again."; return }
+        if (authorization == null) { message = "Vui lòng đăng nhập lại."; return }
         val durationMinutes = duration.toIntOrNull()
         if (title.isBlank() || durationMinutes == null || durationMinutes < 1) { message = "Nhập tiêu đề và thời gian hợp lệ."; return }
         val questionCountVal = questionCount.toIntOrNull()
@@ -2526,12 +2533,12 @@ fun EditExamScreen(onBack: () -> Unit) {
                 )
                 if (response.success) {
                     response.data?.let { ExamAttemptStore.selectExam(it.id, it) }
-                    message = "Exam updated."
+                    message = "Đã cập nhật đề thi."
                 } else {
                     message = response.message
                 }
-            } catch (exception: HttpException) { message = "Cannot update exam. Please check your account permission." }
-            catch (exception: Exception) { message = "Cannot update exam right now." }
+            } catch (exception: HttpException) { message = "Không thể cập nhật đề thi. Vui lòng kiểm tra quyền." }
+            catch (exception: Exception) { message = "Không thể cập nhật đề thi lúc này." }
             finally { loading = false }
         }
     }
@@ -2539,9 +2546,9 @@ fun EditExamScreen(onBack: () -> Unit) {
     AppBackground {
         if (showUpdateConfirm) {
             ConfirmActionDialog(
-                title = "Update Exam",
-                message = "Save changes to this exam?",
-                confirmLabel = if (loading) "Saving..." else "Save",
+                title = "Cập nhật đề thi",
+                message = "Lưu thay đổi cho đề thi này?",
+                confirmLabel = if (loading) "Đang lưu..." else "Lưu",
                 processing = loading,
                 onConfirm = {
                     showUpdateConfirm = false
@@ -2551,7 +2558,7 @@ fun EditExamScreen(onBack: () -> Unit) {
             )
         }
 
-        ExamTopBar("Edit Exam", onBack)
+        ExamTopBar("Sửa đề thi", onBack)
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -2559,23 +2566,23 @@ fun EditExamScreen(onBack: () -> Unit) {
         ) {
             item {
                 InfoBanner(
-                    exam?.let { "Editing exam: ${it.code}" } ?: "No exam selected.",
+                    exam?.let { "Đang sửa đề thi: ${it.code}" } ?: "Chưa chọn đề thi.",
                     if (exam != null) AppMint else AppAmber,
                     Icons.Default.Info
                 )
 
-                SectionTitle("Exam Details")
-                OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Exam title") }, enabled = !loading && exam != null, shape = MaterialTheme.shapes.medium)
+                SectionTitle("Thông tin đề thi")
+                OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Tiêu đề đề thi") }, enabled = !loading && exam != null, shape = MaterialTheme.shapes.medium)
 
-                SectionTitle("Timing")
-                OutlinedTextField(duration, { duration = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Duration (minutes)") }, enabled = !loading && exam != null, shape = MaterialTheme.shapes.medium)
+                SectionTitle("Thời gian")
+                OutlinedTextField(duration, { duration = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Thời gian (phút)") }, enabled = !loading && exam != null, shape = MaterialTheme.shapes.medium)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     DateTimeField(
                         value = openDateMillis,
                         hour = openHour,
                         minute = openMinute,
-                        label = "Open time",
+                        label = "Giờ mở",
                         modifier = Modifier.weight(1f),
                         onDateClick = { showDatePickerFor = true },
                         onTimeClick = { showTimePickerFor = true }
@@ -2584,7 +2591,7 @@ fun EditExamScreen(onBack: () -> Unit) {
                         value = closeDateMillis,
                         hour = closeHour,
                         minute = closeMinute,
-                        label = "Close time",
+                        label = "Giờ đóng",
                         modifier = Modifier.weight(1f),
                         onDateClick = { showDatePickerFor = false },
                         onTimeClick = { showTimePickerFor = false }
@@ -2610,7 +2617,7 @@ fun EditExamScreen(onBack: () -> Unit) {
                             }) { Text("OK") }
                         },
                         dismissButton = {
-                            TextButton(onClick = { showDatePickerFor = null }) { Text("Cancel") }
+                            TextButton(onClick = { showDatePickerFor = null }) { Text("Hủy") }
                         }
                     ) { DatePicker(state = state) }
                 }
@@ -2620,7 +2627,7 @@ fun EditExamScreen(onBack: () -> Unit) {
                     val timeState = rememberTimePickerState(initialHour = targetHour, initialMinute = targetMinute, is24Hour = true)
                     AlertDialog(
                         onDismissRequest = { showTimePickerFor = null },
-                        title = { Text(if (showTimePickerFor == true) "Open time" else "Close time") },
+                        title = { Text(if (showTimePickerFor == true) "Giờ mở" else "Giờ đóng") },
                         text = { TimePicker(state = timeState, colors = TimePickerDefaults.colors()) },
                         confirmButton = {
                             TextButton(onClick = {
@@ -2633,28 +2640,28 @@ fun EditExamScreen(onBack: () -> Unit) {
                             }) { Text("OK") }
                         },
                         dismissButton = {
-                            TextButton(onClick = { showTimePickerFor = null }) { Text("Cancel") }
+                            TextButton(onClick = { showTimePickerFor = null }) { Text("Hủy") }
                         }
                     )
                 }
 
-                SectionTitle("Scoring")
+                SectionTitle("Tính điểm")
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(value = questionCount, { questionCount = it }, modifier = Modifier.weight(1f), label = { Text("Questions") }, enabled = !loading && exam != null, shape = MaterialTheme.shapes.medium)
+                    OutlinedTextField(value = questionCount, { questionCount = it }, modifier = Modifier.weight(1f), label = { Text("Câu hỏi") }, enabled = !loading && exam != null, shape = MaterialTheme.shapes.medium)
                     OutlinedTextField(
                         value = points,
                         onValueChange = {},
                         modifier = Modifier.weight(1f),
-                        label = { Text("Points each") },
+                        label = { Text("Điểm mỗi câu") },
                         enabled = false,
                         readOnly = true,
                         shape = MaterialTheme.shapes.medium
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-                InfoBanner("Total exam score is fixed at 10.0. Points each question are calculated automatically.", AppBlue, Icons.Default.Info)
+                InfoBanner("Tổng điểm đề thi cố định là 10.0. Điểm mỗi câu được tính tự động.", AppBlue, Icons.Default.Info)
 
-                SectionTitle("Options")
+                SectionTitle("Tùy chọn")
                 Card(
                     shape = MaterialTheme.shapes.large,
                     colors = CardDefaults.cardColors(containerColor = AppSurface),
@@ -2664,12 +2671,12 @@ fun EditExamScreen(onBack: () -> Unit) {
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column { Text("Randomize questions", fontWeight = FontWeight.Medium); Text("Shuffle question order", color = AppMuted, style = MaterialTheme.typography.bodyMedium) }
+                            Column { Text("Xáo trộn câu hỏi", fontWeight = FontWeight.Medium); Text("Xáo trộn thứ tự câu hỏi", color = AppMuted, style = MaterialTheme.typography.bodyMedium) }
                             Switch(randomQuestion, { randomQuestion = it }, enabled = !loading && exam != null, colors = SwitchDefaults.colors(checkedTrackColor = AppIndigo))
                         }
                         HorizontalDivider(Modifier.padding(vertical = 10.dp), color = AppCardBorder)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column { Text("Randomize answers", fontWeight = FontWeight.Medium); Text("Shuffle answer options", color = AppMuted, style = MaterialTheme.typography.bodyMedium) }
+                            Column { Text("Xáo trộn đáp án", fontWeight = FontWeight.Medium); Text("Xáo trộn thứ tự đáp án", color = AppMuted, style = MaterialTheme.typography.bodyMedium) }
                             Switch(randomAnswer, { randomAnswer = it }, enabled = !loading && exam != null, colors = SwitchDefaults.colors(checkedTrackColor = AppIndigo))
                         }
                     }
@@ -2677,11 +2684,11 @@ fun EditExamScreen(onBack: () -> Unit) {
 
                 if (message != null) {
                     Spacer(Modifier.height(8.dp))
-                    InfoBanner(message.orEmpty(), if (message.orEmpty().startsWith("Exam updated")) AppMint else AppRed, if (message.orEmpty().startsWith("Exam updated")) Icons.Default.CheckCircle else Icons.Default.ErrorOutline)
+                    InfoBanner(message.orEmpty(), if (message.orEmpty().startsWith("Đã cập nhật đề thi")) AppMint else AppRed, if (message.orEmpty().startsWith("Đã cập nhật đề thi")) Icons.Default.CheckCircle else Icons.Default.ErrorOutline)
                 }
 
                 Spacer(Modifier.height(14.dp))
-                PrimaryAction(if (loading) "Saving..." else "Save Changes") { if (!loading) showUpdateConfirm = true }
+                PrimaryAction(if (loading) "Đang lưu..." else "Lưu thay đổi") { if (!loading) showUpdateConfirm = true }
             }
         }
     }
@@ -2703,7 +2710,7 @@ private fun DateTimeField(
         val fmt = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
         "${fmt.format(cal.time)} ${"%02d:%02d".format(hour, minute)}"
     } else {
-        "Not set"
+        "Chưa đặt"
     }
     Card(
         shape = MaterialTheme.shapes.medium,
@@ -2766,7 +2773,7 @@ private fun formatDateTime(dateMillis: Long?, hour: Int, minute: Int): String? {
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun AutoGenerateExamScreen(onBack: () -> Unit) {
-    var title by remember { mutableStateOf("Generated Android Exam") }
+    var title by remember { mutableStateOf("Đề thi Android tự động") }
     var subjects by remember { mutableStateOf<List<SubjectResponse>>(emptyList()) }
     var topics by remember { mutableStateOf<List<TopicResponse>>(emptyList()) }
     var selectedSubject by remember { mutableStateOf<SubjectResponse?>(null) }
@@ -2799,7 +2806,7 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) {
-            message = "Please sign in again."
+            message = "Vui lòng đăng nhập lại."
             return@LaunchedEffect
         }
         catalogLoading = true
@@ -2807,7 +2814,7 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
             val response = ApiClient.getSubjects(authorization)
             subjects = response.data.orEmpty()
             selectedSubject = subjects.firstOrNull()
-            message = if (subjects.isEmpty()) "No subjects available." else null
+            message = if (subjects.isEmpty()) "Không có môn học." else null
         } catch (exception: Exception) {
             message = "Không thể tải môn học lúc này."
         } finally {
@@ -2842,19 +2849,19 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
 
     fun generateExam() {
         val authorization = SessionManager.authorizationHeader()
-        if (authorization == null) { message = "Please sign in again."; return }
+        if (authorization == null) { message = "Vui lòng đăng nhập lại."; return }
         val subject = selectedSubject
-        if (subject == null) { message = "Select a subject."; return }
+        if (subject == null) { message = "Vui lòng chọn môn học."; return }
         val durationMinutes = duration.toIntOrNull()
         val easyCount = easy.toIntOrNull()
         val mediumCount = medium.toIntOrNull()
         val hardCount = hard.toIntOrNull()
         if (title.isBlank() || durationMinutes == null || durationMinutes < 1) { message = "Nhập tiêu đề và thời gian hợp lệ."; return }
         if (easyCount == null || mediumCount == null || hardCount == null || easyCount < 0 || mediumCount < 0 || hardCount < 0) {
-            message = "Question counts must be valid numbers."
+            message = "Số lượng câu hỏi phải là số hợp lệ."
             return
         }
-        if (easyCount + mediumCount + hardCount == 0) { message = "Select at least one question."; return }
+        if (easyCount + mediumCount + hardCount == 0) { message = "Chọn ít nhất một câu hỏi."; return }
         if (openDateMillis == null) { message = "Chọn thời gian mở."; return }
         if (closeDateMillis == null) { message = "Chọn thời gian đóng."; return }
         val openDt = formatDateTime(openDateMillis, openHour, openMinute) ?: return
@@ -2878,39 +2885,39 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
                         endTime = closeDt
                     )
                 )
-                message = if (response.success) "Exam generated: ${response.data?.code}" else response.message
+                message = if (response.success) "Đã tạo đề thi: ${response.data?.code}" else response.message
             } catch (exception: HttpException) {
                 val backendMessage = runCatching {
                     val body = exception.response()?.errorBody()?.string().orEmpty()
                     gson.fromJson(body, ApiResponse::class.java)?.message
                 }.getOrNull().orEmpty()
                 message = backendMessage.ifBlank {
-                    if (exception.code() == 403) "You do not have permission to generate exams." else "Cannot generate exam right now."
+                    if (exception.code() == 403) "Bạn không có quyền tạo đề thi." else "Không thể tạo đề thi lúc này."
                 }
             }
-            catch (exception: Exception) { message = "Cannot generate exam right now." }
+            catch (exception: Exception) { message = "Không thể tạo đề thi lúc này." }
             finally { loading = false }
         }
     }
 
     AppBackground {
-        ExamTopBar("Auto Generate Exam", onBack)
+        ExamTopBar("Tự động tạo đề thi", onBack)
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            SectionTitle("Exam Info")
-            OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Exam title") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
+            SectionTitle("Thông tin đề thi")
+            OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Tiêu đề đề thi") }, enabled = !loading, shape = MaterialTheme.shapes.medium)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(duration, { duration = it }, modifier = Modifier.weight(1f), label = { Text("Duration") }, enabled = !loading, shape = MaterialTheme.shapes.medium, singleLine = true)
+                OutlinedTextField(duration, { duration = it }, modifier = Modifier.weight(1f), label = { Text("Thời gian") }, enabled = !loading, shape = MaterialTheme.shapes.medium, singleLine = true)
                 OutlinedTextField(
                     value = points,
                     onValueChange = {},
                     modifier = Modifier.weight(1f),
-                    label = { Text("Points each") },
+                    label = { Text("Điểm mỗi câu") },
                     enabled = false,
                     readOnly = true,
                     shape = MaterialTheme.shapes.medium,
@@ -2918,28 +2925,28 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
                 )
             }
             Spacer(Modifier.height(8.dp))
-            InfoBanner("Total exam score is fixed at 10.0. Points each question are calculated automatically.", AppBlue, Icons.Default.Info)
+            InfoBanner("Tổng điểm đề thi cố định là 10.0. Điểm mỗi câu được tính tự động.", AppBlue, Icons.Default.Info)
 
-            SectionTitle("Timing")
+            SectionTitle("Thời gian")
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                DateTimeField(
-                    value = openDateMillis,
-                    hour = openHour,
-                    minute = openMinute,
-                    label = "Open time",
-                    modifier = Modifier.weight(1f),
-                    onDateClick = { showDatePickerFor = true },
-                    onTimeClick = { showTimePickerFor = true }
-                )
-                DateTimeField(
-                    value = closeDateMillis,
-                    hour = closeHour,
-                    minute = closeMinute,
-                    label = "Close time",
-                    modifier = Modifier.weight(1f),
-                    onDateClick = { showDatePickerFor = false },
-                    onTimeClick = { showTimePickerFor = false }
-                )
+                    DateTimeField(
+                        value = openDateMillis,
+                        hour = openHour,
+                        minute = openMinute,
+                        label = "Giờ mở",
+                        modifier = Modifier.weight(1f),
+                        onDateClick = { showDatePickerFor = true },
+                        onTimeClick = { showTimePickerFor = true }
+                    )
+                    DateTimeField(
+                        value = closeDateMillis,
+                        hour = closeHour,
+                        minute = closeMinute,
+                        label = "Giờ đóng",
+                        modifier = Modifier.weight(1f),
+                        onDateClick = { showDatePickerFor = false },
+                        onTimeClick = { showTimePickerFor = false }
+                    )
             }
             if (showDatePickerFor != null) {
                 val initial = if (showDatePickerFor == true) openDateMillis else closeDateMillis
@@ -2960,18 +2967,18 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
                             showTimePickerFor = if (showDatePickerFor == true) true else false
                         }) { Text("OK") }
                     },
-                    dismissButton = {
-                        TextButton(onClick = { showDatePickerFor = null }) { Text("Cancel") }
-                    }
-                ) { DatePicker(state = state) }
-            }
-            if (showTimePickerFor != null) {
-                val targetHour = if (showTimePickerFor == true) openHour else closeHour
-                val targetMinute = if (showTimePickerFor == true) openMinute else closeMinute
-                val timeState = rememberTimePickerState(initialHour = targetHour, initialMinute = targetMinute, is24Hour = true)
-                AlertDialog(
-                    onDismissRequest = { showTimePickerFor = null },
-                    title = { Text(if (showTimePickerFor == true) "Open time" else "Close time") },
+                        dismissButton = {
+                            TextButton(onClick = { showDatePickerFor = null }) { Text("Hủy") }
+                        }
+                    ) { DatePicker(state = state) }
+                }
+                if (showTimePickerFor != null) {
+                    val targetHour = if (showTimePickerFor == true) openHour else closeHour
+                    val targetMinute = if (showTimePickerFor == true) openMinute else closeMinute
+                    val timeState = rememberTimePickerState(initialHour = targetHour, initialMinute = targetMinute, is24Hour = true)
+                    AlertDialog(
+                        onDismissRequest = { showTimePickerFor = null },
+                        title = { Text(if (showTimePickerFor == true) "Giờ mở" else "Giờ đóng") },
                     text = { TimePicker(state = timeState, colors = TimePickerDefaults.colors()) },
                     confirmButton = {
                         TextButton(onClick = {
@@ -2984,7 +2991,7 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
                         }) { Text("OK") }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showTimePickerFor = null }) { Text("Cancel") }
+                        TextButton(onClick = { showTimePickerFor = null }) { Text("Hủy") }
                     }
                 )
             }
@@ -3017,7 +3024,7 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
                 onAdd = if (selectedSubject != null) {{ addTopicDialog = true }} else null
             )
 
-            SectionTitle("Questions by Difficulty")
+            SectionTitle("Câu hỏi theo độ khó")
             Card(
                 shape = MaterialTheme.shapes.large,
                 colors = CardDefaults.cardColors(containerColor = AppSurface),
@@ -3027,15 +3034,15 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        ChipText("Easy", AppMint); Spacer(Modifier.width(12.dp))
+                        ChipText("Dễ", AppMint); Spacer(Modifier.width(12.dp))
                         OutlinedTextField(easy, { easy = it }, modifier = Modifier.weight(1f), enabled = !loading, shape = MaterialTheme.shapes.medium, singleLine = true)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        ChipText("Medium", AppAmber); Spacer(Modifier.width(12.dp))
+                        ChipText("Trung bình", AppAmber); Spacer(Modifier.width(12.dp))
                         OutlinedTextField(medium, { medium = it }, modifier = Modifier.weight(1f), enabled = !loading, shape = MaterialTheme.shapes.medium, singleLine = true)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        ChipText("Hard", AppRed); Spacer(Modifier.width(12.dp))
+                        ChipText("Khó", AppRed); Spacer(Modifier.width(12.dp))
                         OutlinedTextField(hard, { hard = it }, modifier = Modifier.weight(1f), enabled = !loading, shape = MaterialTheme.shapes.medium, singleLine = true)
                     }
                 }
@@ -3049,21 +3056,21 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
                         .fillMaxWidth()
                 ) {
                     Column(Modifier.padding(16.dp)) {
-                        Text("Preview Configuration", fontWeight = FontWeight.Bold, color = AppIndigo)
+                        Text("Xem trước cấu hình", fontWeight = FontWeight.Bold, color = AppIndigo)
                         Spacer(Modifier.height(8.dp))
                         val total = (easy.toIntOrNull() ?: 0) + (medium.toIntOrNull() ?: 0) + (hard.toIntOrNull() ?: 0)
-                        Text("$total questions - ${duration.ifBlank { "--" }} minutes - Randomized - ${points.ifBlank { "--" }} pts each", color = AppMuted)
+                        Text("$total câu hỏi - ${duration.ifBlank { "--" }} phút - Đã xáo trộn - ${points.ifBlank { "--" }} điểm mỗi câu", color = AppMuted)
                     }
                 }
             }
 
             if (message != null) {
                 Spacer(Modifier.height(10.dp))
-                InfoBanner(message.orEmpty(), if (message.orEmpty().startsWith("Exam generated")) AppMint else AppRed, if (message.orEmpty().startsWith("Exam generated")) Icons.Default.CheckCircle else Icons.Default.ErrorOutline)
+                InfoBanner(message.orEmpty(), if (message.orEmpty().startsWith("Đã tạo đề thi")) AppMint else AppRed, if (message.orEmpty().startsWith("Đã tạo đề thi")) Icons.Default.CheckCircle else Icons.Default.ErrorOutline)
             }
 
             Spacer(Modifier.height(14.dp))
-            PrimaryAction(if (loading) "Generating..." else "Generate Exam") { if (!loading) generateExam() }
+            PrimaryAction(if (loading) "Đang tạo..." else "Tạo đề thi") { if (!loading) generateExam() }
             Spacer(Modifier.height(24.dp))
         }
 
@@ -3166,7 +3173,7 @@ fun LiveMonitoringScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         val auth = SessionManager.authorizationHeader()
         if (auth == null) {
-            message = "Please sign in again."
+            message = "Vui lòng đăng nhập lại."
             loadingExams = false
             return@LaunchedEffect
         }
@@ -3175,9 +3182,9 @@ fun LiveMonitoringScreen(onBack: () -> Unit) {
             val response = ApiClient.getExams(auth)
             exams = response.data.orEmpty()
             selectedExam = exams.firstOrNull()
-            message = if (exams.isEmpty()) "No exams found." else null
+            message = if (exams.isEmpty()) "Không tìm thấy đề thi." else null
         } catch (e: Exception) {
-            message = "Cannot load exams."
+            message = "Không thể tải đề thi."
         } finally {
             loadingExams = false
         }
@@ -3191,7 +3198,7 @@ fun LiveMonitoringScreen(onBack: () -> Unit) {
             val response = ApiClient.getExamReport(auth, exam.id)
             report = response.data
         } catch (e: Exception) {
-            message = "Cannot load report."
+            message = "Không thể tải báo cáo."
         } finally {
             loadingReport = false
         }
@@ -3212,18 +3219,18 @@ fun LiveMonitoringScreen(onBack: () -> Unit) {
     }
 
     AppBackground {
-        ExamTopBar("Live Monitoring", onBack)
+        ExamTopBar("Giám sát trực tiếp", onBack)
 
         Column(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
         ) {
-            SectionTitle("Select Exam")
+            SectionTitle("Chọn đề thi")
             CatalogDropdown(
-                label = "Exam",
+                label = "Đề thi",
                 value = selectedExam?.let { "${it.code} - ${it.title}" }
-                    ?: if (loadingExams) "Loading..." else "No exam selected",
+                    ?: if (loadingExams) "Đang tải..." else "Chưa chọn đề thi",
                 enabled = !loadingExams && exams.isNotEmpty(),
                 items = exams,
                 itemText = { "${it.code} - ${it.title}" },
@@ -3237,28 +3244,28 @@ fun LiveMonitoringScreen(onBack: () -> Unit) {
 
             if (loadingReport) {
                 Spacer(Modifier.height(8.dp))
-                LoadingStateCard("Loading candidates...")
+                LoadingStateCard("Đang tải thí sinh...")
             }
 
             report?.let { data ->
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    MetricCard("Total", data.totalResults.toString(), "candidates", AppBlue, Icons.Default.Person, modifier = Modifier.weight(1f).height(90.dp))
-                    MetricCard("Submitted", data.submittedCount.toString(), "done", AppMint, Icons.Default.CheckCircle, modifier = Modifier.weight(1f).height(90.dp))
-                    MetricCard("Doing", (data.totalResults - data.submittedCount).toString(), "in progress", AppAmber, Icons.Default.Info, modifier = Modifier.weight(1f).height(90.dp))
+                    MetricCard("Tổng", data.totalResults.toString(), "thí sinh", AppBlue, Icons.Default.Person, modifier = Modifier.weight(1f).height(90.dp))
+                    MetricCard("Đã nộp", data.submittedCount.toString(), "xong", AppMint, Icons.Default.CheckCircle, modifier = Modifier.weight(1f).height(90.dp))
+                    MetricCard("Đang làm", (data.totalResults - data.submittedCount).toString(), "đang tiến hành", AppAmber, Icons.Default.Info, modifier = Modifier.weight(1f).height(90.dp))
                 }
                 Spacer(Modifier.height(8.dp))
-                SectionTitle("Candidates")
+                SectionTitle("Thí sinh")
                 val results = data.results.orEmpty()
                 if (results.isEmpty()) {
-                    InfoBanner("No candidates yet.", AppAmber, Icons.Default.Info)
+                    InfoBanner("Chưa có thí sinh.", AppAmber, Icons.Default.Info)
                 } else {
                     results.forEach { result ->
                         val statusColor = reportStatusColor(result.status)
                         val studentName = result.studentName?.takeIf { it.isNotBlank() }
                             ?: result.username?.takeIf { it.isNotBlank() }
                             ?: result.studentCode?.takeIf { it.isNotBlank() }
-                            ?: "Student #${result.studentId}"
+                            ?: "Thí sinh #${result.studentId}"
                         Card(
                             shape = MaterialTheme.shapes.large,
                             colors = CardDefaults.cardColors(containerColor = AppSurface),
@@ -3301,9 +3308,9 @@ fun LiveMonitoringScreen(onBack: () -> Unit) {
             }
 
             Spacer(Modifier.height(12.dp))
-            SectionTitle("Activity Log")
+            SectionTitle("Nhật ký hoạt động")
             if (auditLogs.isEmpty()) {
-                InfoBanner("No activity recorded yet.", AppAmber, Icons.Default.Info)
+                InfoBanner("Chưa có hoạt động nào.", AppAmber, Icons.Default.Info)
             } else {
                 auditLogs.forEach { log ->
                     val logColor = when (log.action) {
@@ -3338,7 +3345,7 @@ fun LiveMonitoringScreen(onBack: () -> Unit) {
                             }
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(log.username ?: "Unknown", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                                Text(log.username ?: "Không xác định", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
                                 Text(
                                     log.action + log.reason?.let { " - $it" }.orEmpty(),
                                     color = logColor,
@@ -3362,9 +3369,9 @@ fun LiveMonitoringScreen(onBack: () -> Unit) {
 @Composable
 private fun LiveMonitoringScreenLegacy(onBack: () -> Unit) {
     AppBackground {
-        ExamTopBar("Live Monitoring", onBack)
+        ExamTopBar("Giám sát trực tiếp", onBack)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
-            item { SectionTitle("Active Candidates") }
+            item { SectionTitle("Thí sinh đang hoạt động") }
             items(MockData.candidates) { candidate ->
                 val color = when (candidate.status) {
                     CandidateStatus.DOING -> AppBlue
@@ -3445,7 +3452,7 @@ fun ReportDashboardScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) {
-            message = "Please sign in again."
+            message = "Vui lòng đăng nhập lại."
             return@LaunchedEffect
         }
 
@@ -3454,15 +3461,15 @@ fun ReportDashboardScreen(onBack: () -> Unit) {
             val response = ApiClient.getExams(authorization)
             exams = response.data.orEmpty()
             selectedExam = exams.firstOrNull()
-            message = if (exams.isEmpty()) "Create an exam first to view reports." else null
+            message = if (exams.isEmpty()) "Tạo đề thi trước để xem báo cáo." else null
         } catch (exception: HttpException) {
             val backendMessage = runCatching {
                 val body = exception.response()?.errorBody()?.string().orEmpty()
                 gson.fromJson(body, ApiResponse::class.java)?.message
             }.getOrNull().orEmpty()
-            message = backendMessage.ifBlank { "Cannot load exams right now." }
+            message = backendMessage.ifBlank { "Không thể tải đề thi lúc này." }
         } catch (exception: Exception) {
-            message = "Cannot load exams right now."
+            message = "Không thể tải đề thi lúc này."
         } finally {
             loadingExams = false
         }
@@ -3472,7 +3479,7 @@ fun ReportDashboardScreen(onBack: () -> Unit) {
         val exam = selectedExam ?: return@LaunchedEffect
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) {
-            message = "Please sign in again."
+            message = "Vui lòng đăng nhập lại."
             return@LaunchedEffect
         }
 
@@ -3488,17 +3495,17 @@ fun ReportDashboardScreen(onBack: () -> Unit) {
                 gson.fromJson(body, ApiResponse::class.java)?.message
             }.getOrNull().orEmpty()
             message = backendMessage.ifBlank {
-                if (exception.code() == 403) "You do not have permission to view reports." else "Cannot load report right now."
+                if (exception.code() == 403) "Bạn không có quyền xem báo cáo." else "Không thể tải báo cáo lúc này."
             }
         } catch (exception: Exception) {
-            message = "Cannot load report right now."
+            message = "Không thể tải báo cáo lúc này."
         } finally {
             loadingReport = false
         }
     }
 
     AppBackground {
-        ExamTopBar("Reports", onBack)
+        ExamTopBar("Báo cáo", onBack)
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -3512,20 +3519,20 @@ fun ReportDashboardScreen(onBack: () -> Unit) {
                     .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
             ) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("Exam Reports", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text("Báo cáo đề thi", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        selectedExam?.title ?: "Select an exam to view results.",
+                        selectedExam?.title ?: "Chọn đề thi để xem kết quả.",
                         color = AppMuted,
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
 
-            SectionTitle("Exam")
+            SectionTitle("Đề thi")
             CatalogDropdown(
-                label = "Exam",
-                value = selectedExam?.title ?: if (loadingExams) "Loading exams..." else "No exam selected",
+                label = "Đề thi",
+                value = selectedExam?.title ?: if (loadingExams) "Đang tải đề thi..." else "Chưa chọn đề thi",
                 enabled = !loadingExams && exams.isNotEmpty(),
                 items = exams,
                 itemText = { "${it.code} - ${it.title}" },
@@ -3542,27 +3549,27 @@ fun ReportDashboardScreen(onBack: () -> Unit) {
 
             if (loadingReport) {
                 Spacer(Modifier.height(12.dp))
-                InfoBanner("Loading report...", AppBlue, Icons.Default.Info)
+                InfoBanner("Đang tải báo cáo...", AppBlue, Icons.Default.Info)
             }
 
             report?.let { data ->
         SectionTitle("Tổng quan")
-                MetricCard("Results", data.totalResults.toString(), "records", AppBlue, Icons.Default.Assessment)
+                MetricCard("Kết quả", data.totalResults.toString(), "bản ghi", AppBlue, Icons.Default.Assessment)
                 Spacer(Modifier.height(8.dp))
-                MetricCard("Submitted", data.submittedCount.toString(), "submitted", AppMint, Icons.Default.CheckCircle)
+                MetricCard("Đã nộp", data.submittedCount.toString(), "đã nộp", AppMint, Icons.Default.CheckCircle)
                 Spacer(Modifier.height(8.dp))
-                MetricCard("Doing", data.doingCount.toString(), "in progress", AppAmber, Icons.Default.Info)
+                MetricCard("Đang làm", data.doingCount.toString(), "đang tiến hành", AppAmber, Icons.Default.Info)
                 Spacer(Modifier.height(8.dp))
-                MetricCard("Average", reportScore(data.averageScore), "score", AppViolet, Icons.Default.Assessment)
+                MetricCard("Trung bình", reportScore(data.averageScore), "điểm", AppViolet, Icons.Default.Assessment)
                 Spacer(Modifier.height(8.dp))
-                MetricCard("Highest", reportScore(data.highestScore), "score", AppMint, Icons.Default.Assessment)
+                MetricCard("Cao nhất", reportScore(data.highestScore), "điểm", AppMint, Icons.Default.Assessment)
                 Spacer(Modifier.height(8.dp))
-                MetricCard("Lowest", reportScore(data.lowestScore), "score", AppRed, Icons.Default.Assessment)
+                MetricCard("Thấp nhất", reportScore(data.lowestScore), "điểm", AppRed, Icons.Default.Assessment)
 
-                SectionTitle("Student Results")
+                SectionTitle("Kết quả thí sinh")
                 val results = data.results.orEmpty()
                 if (results.isEmpty()) {
-                    InfoBanner("No results yet.", AppAmber, Icons.Default.Info)
+                    InfoBanner("Chưa có kết quả.", AppAmber, Icons.Default.Info)
                 } else {
                     results.forEach { result ->
                         ReportResultRow(result)
@@ -3582,10 +3589,10 @@ private fun ReportResultRow(result: ExamReportItemResponse) {
     val studentName = result.studentName?.takeIf { it.isNotBlank() }
         ?: result.username?.takeIf { it.isNotBlank() }
         ?: result.studentCode?.takeIf { it.isNotBlank() }
-        ?: "Student #${result.studentId}"
+        ?: "Thí sinh #${result.studentId}"
     val studentIdentity = result.studentCode?.takeIf { it.isNotBlank() }
         ?: result.username?.takeIf { it.isNotBlank() }
-        ?: "User #${result.studentId}"
+        ?: "Người dùng #${result.studentId}"
 
     Card(
         shape = MaterialTheme.shapes.large,
@@ -3609,11 +3616,11 @@ private fun ReportResultRow(result: ExamReportItemResponse) {
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.weight(1f)) {
-                    Text("Score", color = AppMuted, style = MaterialTheme.typography.labelMedium)
+                    Text("Điểm", color = AppMuted, style = MaterialTheme.typography.labelMedium)
                     Text(reportScore(result.score), fontWeight = FontWeight.Bold, color = AppText)
                 }
                 Column(Modifier.weight(1f)) {
-                    Text("Submitted", color = AppMuted, style = MaterialTheme.typography.labelMedium)
+                    Text("Đã nộp", color = AppMuted, style = MaterialTheme.typography.labelMedium)
                     Text(reportDate(result.submittedAt), color = AppText, style = MaterialTheme.typography.bodyMedium)
                 }
             }
@@ -3626,14 +3633,14 @@ private fun reportScore(score: String?): String {
 }
 
 private fun reportDate(value: String?): String {
-    return value?.takeIf { it.isNotBlank() }?.replace("T", " ")?.take(16) ?: "Not submitted"
+    return value?.takeIf { it.isNotBlank() }?.replace("T", " ")?.take(16) ?: "Chưa nộp"
 }
 
 private fun reportStatusLabel(status: String): String {
     return when (status) {
-        "SUBMITTED" -> "Submitted"
-        "DOING" -> "Doing"
-        "CANCELLED" -> "Cancelled"
+        "SUBMITTED" -> "Đã nộp"
+        "DOING" -> "Đang làm"
+        "CANCELLED" -> "Đã hủy"
         else -> status
     }
 }
@@ -3648,10 +3655,10 @@ private fun reportStatusColor(status: String) = when (status) {
 @Composable
 private fun ReportDashboardScreenLegacy(onBack: () -> Unit) {
     AppBackground {
-        ExamTopBar("Reports", onBack)
-        GradientHero("Average Score 7.6", "Performance overview across all exams")
+        ExamTopBar("Báo cáo", onBack)
+        GradientHero("Điểm trung bình 7.6", "Tổng quan hiệu suất qua tất cả đề thi")
 
-        SectionTitle("Score Distribution")
+        SectionTitle("Phân bố điểm")
         Card(
             shape = MaterialTheme.shapes.large,
             colors = CardDefaults.cardColors(containerColor = AppSurface),
@@ -3684,7 +3691,7 @@ private fun ReportDashboardScreenLegacy(onBack: () -> Unit) {
             }
         }
 
-        SectionTitle("Top Results")
+        SectionTitle("Kết quả cao nhất")
         MockData.results.forEach { result ->
             val scoreColor = when { result.score >= 8 -> AppMint; result.score >= 5 -> AppAmber; else -> AppRed }
             Card(
@@ -3705,13 +3712,13 @@ private fun ReportDashboardScreenLegacy(onBack: () -> Unit) {
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(result.exam, fontWeight = FontWeight.SemiBold)
-                        Text("${result.correct} correct · ${result.wrong} wrong · ${result.blank} blank", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                        Text("${result.correct} đúng · ${result.wrong} sai · ${result.blank} trống", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
         }
 
         Spacer(Modifier.height(12.dp))
-        PrimaryAction("Export Excel / PDF")
+        PrimaryAction("Xuất Excel / PDF")
     }
 }
