@@ -64,6 +64,30 @@ data class TopicResponse(
     val description: String?
 )
 
+data class StudentGroupResponse(
+    val id: Long,
+    val name: String,
+    val description: String?,
+    val memberCount: Int? = null
+)
+
+data class AddGroupMemberRequest(
+    val userIds: List<Long>
+)
+
+data class StudentGroupMemberResponse(
+    val id: Long,
+    val groupId: Long,
+    val userId: Long,
+    val username: String?,
+    val fullName: String?
+)
+
+data class GroupCreateRequest(
+    val name: String,
+    val description: String?
+)
+
 data class ExamCreateRequest(
     val title: String,
     val durationMinutes: Int,
@@ -71,7 +95,8 @@ data class ExamCreateRequest(
     val startTime: String?,
     val endTime: String?,
     val shuffleQuestions: Boolean,
-    val shuffleAnswers: Boolean
+    val shuffleAnswers: Boolean,
+    val groupIds: List<Long>? = null
 )
 
 data class ExamUpdateRequest(
@@ -81,7 +106,8 @@ data class ExamUpdateRequest(
     val startTime: String?,
     val endTime: String?,
     val shuffleQuestions: Boolean,
-    val shuffleAnswers: Boolean
+    val shuffleAnswers: Boolean,
+    val groupIds: List<Long>? = null
 )
 
 data class ExamGenerateRequest(
@@ -94,7 +120,8 @@ data class ExamGenerateRequest(
     val mediumCount: Int,
     val hardCount: Int,
     val startTime: String?,
-    val endTime: String?
+    val endTime: String?,
+    val groupIds: List<Long>? = null
 )
 
 data class ExamResponse(
@@ -110,7 +137,8 @@ data class ExamResponse(
     val subject: String? = null,
     val subjectName: String? = null,
     val questionCount: Int? = null,
-    val totalQuestions: Int? = null
+    val totalQuestions: Int? = null,
+    val groupIds: List<Long>? = null
 )
 
 data class ExamSubmitRequest(

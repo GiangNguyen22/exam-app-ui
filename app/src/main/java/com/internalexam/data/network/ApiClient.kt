@@ -177,6 +177,34 @@ object ApiClient {
         return callBackend { it.updateRolePermissions(authorization, roleId, request) }
     }
 
+    suspend fun getGroups(authorization: String): ApiResponse<List<StudentGroupResponse>> {
+        return callBackend { it.getGroups(authorization) }
+    }
+
+    suspend fun createGroup(authorization: String, request: GroupCreateRequest): ApiResponse<StudentGroupResponse> {
+        return callBackend { it.createGroup(authorization, request) }
+    }
+
+    suspend fun updateGroup(authorization: String, id: Long, request: GroupCreateRequest): ApiResponse<StudentGroupResponse> {
+        return callBackend { it.updateGroup(authorization, id, request) }
+    }
+
+    suspend fun deleteGroup(authorization: String, id: Long): ApiResponse<String> {
+        return callBackend { it.deleteGroup(authorization, id) }
+    }
+
+    suspend fun getGroupMembers(authorization: String, id: Long): ApiResponse<List<StudentGroupMemberResponse>> {
+        return callBackend { it.getGroupMembers(authorization, id) }
+    }
+
+    suspend fun addGroupMember(authorization: String, groupId: Long, userIds: List<Long>): ApiResponse<List<StudentGroupMemberResponse>> {
+        return callBackend { it.addGroupMember(authorization, groupId, AddGroupMemberRequest(userIds = userIds)) }
+    }
+
+    suspend fun removeGroupMember(authorization: String, groupId: Long, userId: Long): ApiResponse<String> {
+        return callBackend { it.removeGroupMember(authorization, groupId, userId) }
+    }
+
     suspend fun getAuditLogs(authorization: String): ApiResponse<List<AuditLogResponse>> {
         return callBackend { it.getAuditLogs(authorization) }
     }
