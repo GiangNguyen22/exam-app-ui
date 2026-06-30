@@ -40,6 +40,8 @@ import com.internalexam.ui.admin.AdminAuditLogScreen
 import com.internalexam.ui.admin.AdminDashboardScreen
 import com.internalexam.ui.admin.RolePermissionScreen
 import com.internalexam.ui.admin.UserManagementScreen
+import com.internalexam.ui.admin.GroupListScreen
+import com.internalexam.ui.admin.GroupDetailScreen
 import com.internalexam.ui.auth.LoginScreen
 import com.internalexam.ui.auth.SplashScreen
 import com.internalexam.ui.profile.ProfileScreen
@@ -92,6 +94,8 @@ object Routes {
     const val Users = "admin/users"
     const val RolePermissions = "admin/role-permissions"
     const val AuditLogs = "admin/audit-logs"
+    const val Groups = "admin/groups"
+    const val GroupDetail = "admin/groups/{groupId}"
 }
 
 @Composable
@@ -262,12 +266,18 @@ fun InternalExamApp() {
                 AdminDashboardScreen(
                     openUsers = { nav.navigate(Routes.Users) },
                     openAuditLogs = { nav.navigate(Routes.AuditLogs) },
-                    openRolePermissions = { nav.navigate(Routes.RolePermissions) }
+                    openRolePermissions = { nav.navigate(Routes.RolePermissions) },
+                    openGroups = { nav.navigate(Routes.Groups) }
                 )
             }
             composable(Routes.Users) { UserManagementScreen { nav.popBackStack() } }
             composable(Routes.RolePermissions) { RolePermissionScreen { nav.popBackStack() } }
             composable(Routes.AuditLogs) { AdminAuditLogScreen { nav.popBackStack() } }
+            composable(Routes.Groups) { GroupListScreen(onGroupClick = { groupId -> nav.navigate("admin/groups/$groupId") }, onBack = { nav.popBackStack() }) }
+            composable(Routes.GroupDetail) { backStackEntry ->
+                val groupId = backStackEntry.arguments?.getString("groupId")?.toLongOrNull() ?: return@composable
+                GroupDetailScreen(groupId = groupId, onBack = { nav.popBackStack() })
+            }
         }
     }
 }

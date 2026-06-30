@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.DateRange
@@ -56,6 +58,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
@@ -105,6 +108,7 @@ import com.internalexam.data.questionimport.QuestionExcelTemplate
 import com.internalexam.data.network.ApiClient
 import com.internalexam.data.network.AuditLogResponse
 import com.internalexam.data.network.AnswerCreateRequest
+import com.internalexam.data.network.StudentGroupResponse
 import com.internalexam.data.network.ExamCreateRequest
 import com.internalexam.data.network.ExamGenerateRequest
 import com.internalexam.data.network.ExamReportItemResponse
@@ -2064,9 +2068,22 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
     var templateLoading by remember { mutableStateOf(false) }
     var excelLoading by remember { mutableStateOf(false) }
     var showExcelConfirm by remember { mutableStateOf(false) }
+    var groups by remember { mutableStateOf<List<StudentGroupResponse>>(emptyList()) }
+    var selectedGroupIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var groupsLoading by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val gson = remember { Gson() }
+
+    LaunchedEffect(Unit) {
+        val authorization = SessionManager.authorizationHeader() ?: return@LaunchedEffect
+        groupsLoading = true
+        try {
+            val response = ApiClient.getGroups(authorization)
+            groups = response.data.orEmpty()
+        } catch (_: Exception) {}
+        finally { groupsLoading = false }
+    }
     val excelMimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
     fun importExamExcel(uri: android.net.Uri) {
@@ -2193,7 +2210,8 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                         startTime = formatDateTime(openDateMillis, openHour, openMinute),
                         endTime = formatDateTime(closeDateMillis, closeHour, closeMinute),
                         shuffleQuestions = randomQuestion,
-                        shuffleAnswers = randomAnswer
+                        shuffleAnswers = randomAnswer,
+                        groupIds = selectedGroupIds.toList().ifEmpty { null }
                     )
                 )
                 val createdExam = response.data
@@ -2406,6 +2424,15 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                     }
                 }
 
+                SectionTitle("Lớp học")
+                GroupSelector(
+                    groups = groups,
+                    loading = groupsLoading,
+                    selectedIds = selectedGroupIds,
+                    onSelectionChanged = { selectedGroupIds = it },
+                    enabled = !loading
+                )
+
                 if (message != null) {
                     Spacer(Modifier.height(8.dp))
                     val currentMessage = message.orEmpty()
@@ -2472,11 +2499,24 @@ fun EditExamScreen(onBack: () -> Unit) {
     var closeMinute by remember(exam?.id) { mutableIntStateOf(0) }
     var showDatePickerFor by remember { mutableStateOf<Boolean?>(null) }
     var showTimePickerFor by remember { mutableStateOf<Boolean?>(null) }
+    var groups by remember { mutableStateOf<List<StudentGroupResponse>>(emptyList()) }
+    var selectedGroupIds by remember(exam?.id) { mutableStateOf(exam?.groupIds?.toSet() ?: emptySet()) }
+    var groupsLoading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var showUpdateConfirm by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val gson = remember { Gson() }
+
+    LaunchedEffect(exam?.id) {
+        val authorization = SessionManager.authorizationHeader() ?: return@LaunchedEffect
+        groupsLoading = true
+        try {
+            val response = ApiClient.getGroups(authorization)
+            groups = response.data.orEmpty()
+        } catch (_: Exception) {}
+        finally { groupsLoading = false }
+    }
 
     LaunchedEffect(exam?.id) {
         if (exam != null) {
@@ -2528,7 +2568,8 @@ fun EditExamScreen(onBack: () -> Unit) {
                         startTime = openDt,
                         endTime = closeDt,
                         shuffleQuestions = randomQuestion,
-                        shuffleAnswers = randomAnswer
+                        shuffleAnswers = randomAnswer,
+                        groupIds = selectedGroupIds.toList().ifEmpty { null }
                     )
                 )
                 if (response.success) {
@@ -2682,6 +2723,15 @@ fun EditExamScreen(onBack: () -> Unit) {
                     }
                 }
 
+                SectionTitle("Lớp học")
+                GroupSelector(
+                    groups = groups,
+                    loading = groupsLoading,
+                    selectedIds = selectedGroupIds,
+                    onSelectionChanged = { selectedGroupIds = it },
+                    enabled = !loading && exam != null
+                )
+
                 if (message != null) {
                     Spacer(Modifier.height(8.dp))
                     InfoBanner(message.orEmpty(), if (message.orEmpty().startsWith("Đã cập nhật đề thi")) AppMint else AppRed, if (message.orEmpty().startsWith("Đã cập nhật đề thi")) Icons.Default.CheckCircle else Icons.Default.ErrorOutline)
@@ -2770,6 +2820,115 @@ private fun formatDateTime(dateMillis: Long?, hour: Int, minute: Int): String? {
     return fmt.format(cal.time)
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun GroupSelector(
+    groups: List<StudentGroupResponse>,
+    loading: Boolean,
+    selectedIds: Set<Long>,
+    onSelectionChanged: (Set<Long>) -> Unit,
+    enabled: Boolean
+) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = AppSurface),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Chọn lớp học", fontWeight = FontWeight.Medium)
+                    Text(
+                        if (selectedIds.isEmpty()) "Tất cả học sinh đều có thể xem"
+                        else "${selectedIds.size} lớp được chọn",
+                        color = AppMuted,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                OutlinedButton(
+                    onClick = { showDialog = true },
+                    enabled = enabled
+                ) {
+                    Text(if (selectedIds.isEmpty()) "Chọn lớp" else "Thay đổi")
+                }
+            }
+            if (selectedIds.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    groups.filter { it.id in selectedIds }.forEach { group ->
+                        AssistChip(
+                            onClick = { onSelectionChanged(selectedIds - group.id) },
+                            label = { Text(group.name, style = MaterialTheme.typography.bodySmall) },
+                            trailingIcon = { Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Chọn lớp học") },
+            text = {
+                if (loading) {
+                    Text("Đang tải danh sách lớp...")
+                } else if (groups.isEmpty()) {
+                    Column {
+                        Text("Chưa có lớp học nào.")
+                        Spacer(Modifier.height(8.dp))
+                        Text("Tạo lớp học trong mục Quản trị để giới hạn đề thi theo lớp.", color = AppMuted, style = MaterialTheme.typography.bodySmall)
+                    }
+                } else {
+                    Column {
+                        groups.forEach { group ->
+                            Row(
+                                Modifier.fillMaxWidth().clickable {
+                                    onSelectionChanged(
+                                        if (group.id in selectedIds) selectedIds - group.id
+                                        else selectedIds + group.id
+                                    )
+                                }.padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = group.id in selectedIds,
+                                    onCheckedChange = { checked ->
+                                        onSelectionChanged(
+                                            if (checked) selectedIds + group.id
+                                            else selectedIds - group.id
+                                        )
+                                    },
+                                    colors = CheckboxDefaults.colors(checkedColor = AppIndigo)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Column {
+                                    Text(group.name, fontWeight = FontWeight.Medium)
+                                    group.description?.takeIf { it.isNotBlank() }?.let {
+                                        Text(it, color = AppMuted, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDialog = false }) { Text("Xong") }
+            }
+        )
+    }
+}
+
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun AutoGenerateExamScreen(onBack: () -> Unit) {
@@ -2800,8 +2959,21 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
     var newTopicName by remember { mutableStateOf("") }
     var addSubjectLoading by remember { mutableStateOf(false) }
     var addTopicLoading by remember { mutableStateOf(false) }
+    var groups by remember { mutableStateOf<List<StudentGroupResponse>>(emptyList()) }
+    var selectedGroupIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var groupsLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val gson = remember { Gson() }
+
+    LaunchedEffect(Unit) {
+        val authorization = SessionManager.authorizationHeader() ?: return@LaunchedEffect
+        groupsLoading = true
+        try {
+            val response = ApiClient.getGroups(authorization)
+            groups = response.data.orEmpty()
+        } catch (_: Exception) {}
+        finally { groupsLoading = false }
+    }
 
     LaunchedEffect(Unit) {
         val authorization = SessionManager.authorizationHeader()
@@ -2882,7 +3054,8 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
                         mediumCount = mediumCount,
                         hardCount = hardCount,
                         startTime = openDt,
-                        endTime = closeDt
+                        endTime = closeDt,
+                        groupIds = selectedGroupIds.toList().ifEmpty { null }
                     )
                 )
                 message = if (response.success) "Đã tạo đề thi: ${response.data?.code}" else response.message
@@ -3063,6 +3236,16 @@ fun AutoGenerateExamScreen(onBack: () -> Unit) {
                     }
                 }
             }
+
+            Spacer(Modifier.height(12.dp))
+            SectionTitle("Lớp học")
+            GroupSelector(
+                groups = groups,
+                loading = groupsLoading,
+                selectedIds = selectedGroupIds,
+                onSelectionChanged = { selectedGroupIds = it },
+                enabled = !loading
+            )
 
             if (message != null) {
                 Spacer(Modifier.height(10.dp))

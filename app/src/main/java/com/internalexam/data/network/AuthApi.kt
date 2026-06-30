@@ -205,6 +205,50 @@ interface AuthApi {
         @Body request: RolePermissionsUpdateRequest
     ): ApiResponse<RoleResponse>
 
+    @GET("api/groups")
+    suspend fun getGroups(
+        @Header("Authorization") authorization: String
+    ): ApiResponse<List<StudentGroupResponse>>
+
+    @POST("api/groups")
+    suspend fun createGroup(
+        @Header("Authorization") authorization: String,
+        @Body request: GroupCreateRequest
+    ): ApiResponse<StudentGroupResponse>
+
+    @PUT("api/groups/{id}")
+    suspend fun updateGroup(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long,
+        @Body request: GroupCreateRequest
+    ): ApiResponse<StudentGroupResponse>
+
+    @DELETE("api/groups/{id}")
+    suspend fun deleteGroup(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long
+    ): ApiResponse<String>
+
+    @GET("api/groups/{id}/members")
+    suspend fun getGroupMembers(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long
+    ): ApiResponse<List<StudentGroupMemberResponse>>
+
+    @POST("api/groups/{id}/members")
+    suspend fun addGroupMember(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long,
+        @Body request: AddGroupMemberRequest
+    ): ApiResponse<List<StudentGroupMemberResponse>>
+
+    @DELETE("api/groups/{id}/members/{userId}")
+    suspend fun removeGroupMember(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long,
+        @Path("userId") userId: Long
+    ): ApiResponse<String>
+
     @GET("api/audit-logs")
     suspend fun getAuditLogs(
         @Header("Authorization") authorization: String

@@ -2,12 +2,16 @@ package com.internalexam.ui.admin
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,22 +26,31 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -58,6 +71,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.internalexam.data.SessionManager
 import com.internalexam.data.auth.backendName
@@ -70,7 +84,12 @@ import com.internalexam.data.network.UserProfileResponse
 import com.internalexam.data.network.UserRolesRequest
 import com.internalexam.data.network.PermissionResponse
 import com.internalexam.data.network.RolePermissionsUpdateRequest
+import com.internalexam.data.network.ApiResponse
 import com.internalexam.data.network.RoleResponse
+import com.internalexam.data.network.StudentGroupResponse
+import com.internalexam.data.network.StudentGroupMemberResponse
+import com.internalexam.data.network.GroupCreateRequest
+import com.google.gson.Gson
 import com.internalexam.model.mock.NetworkState
 import com.internalexam.model.mock.Role
 import com.internalexam.ui.components.AppBackground
@@ -81,6 +100,7 @@ import com.internalexam.ui.components.GradientHero
 import com.internalexam.ui.components.InfoBanner
 import com.internalexam.ui.components.LoadingStateCard
 import com.internalexam.ui.components.MetricCard
+import com.internalexam.ui.components.PrimaryAction
 import com.internalexam.ui.components.SectionTitle
 import com.internalexam.ui.components.StatusPill
 import com.internalexam.ui.theme.AppAmber
@@ -98,7 +118,8 @@ import kotlinx.coroutines.launch
 fun AdminDashboardScreen(
     openUsers: () -> Unit,
     openAuditLogs: () -> Unit,
-    openRolePermissions: () -> Unit
+    openRolePermissions: () -> Unit,
+    openGroups: () -> Unit
 ) {
     var message by remember { mutableStateOf<String?>(null) }
     var userCount by remember { mutableStateOf<Int?>(null) }
@@ -150,6 +171,7 @@ fun AdminDashboardScreen(
         val adminActions = listOf(
             AdminAction("Phân quyền theo role", Icons.Default.Security, openRolePermissions),
             AdminAction("Quản lý tài khoản", Icons.Default.Groups, openUsers),
+            AdminAction("Quản lý lớp học", Icons.Default.Groups, openGroups),
             AdminAction("Nhật ký audit", Icons.Default.History, openAuditLogs)
         )
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1020,5 +1042,448 @@ private fun String.isValidEmailLike(): Boolean {
 
 private fun String.blankToNull(): String? {
     return trim().takeIf { it.isNotBlank() }
+}
+
+private fun StudentGroupResponse.displayInfo(): String = "${name} (${memberCount ?: 0} học sinh)"
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun GroupListScreen(
+    onGroupClick: (Long) -> Unit,
+    onBack: () -> Unit
+) {
+    var groups by remember { mutableStateOf<List<StudentGroupResponse>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf<StudentGroupResponse?>(null) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    fun loadGroups() {
+        val auth = SessionManager.authorizationHeader() ?: return
+        loading = true
+        scope.launch {
+            try {
+                val response = ApiClient.getGroups(auth)
+                groups = response.data.orEmpty()
+            } catch (e: Exception) {
+                message = "Không thể tải danh sách lớp học."
+            } finally { loading = false }
+        }
+    }
+
+    LaunchedEffect(Unit) { loadGroups() }
+
+    AppBackground {
+        ExamTopBar("Quản lý lớp học", onBack)
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("${groups.size} lớp", fontWeight = FontWeight.Medium, color = AppMuted)
+                OutlinedButton(onClick = { showCreateDialog = true }) {
+                    Icon(Icons.Default.Add, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Thêm lớp")
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+
+            if (loading) {
+                LoadingStateCard("Đang tải danh sách lớp...")
+            } else if (groups.isEmpty()) {
+                Spacer(Modifier.height(40.dp))
+                Card(
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = AppSurface),
+                    modifier = Modifier.fillMaxWidth().border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+                ) {
+                    Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Groups, null, tint = AppMuted, modifier = Modifier.size(48.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text("Chưa có lớp học nào", color = AppMuted)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Nhấn \"Thêm lớp\" để tạo lớp học mới.", color = AppMuted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(groups) { group ->
+                        Card(
+                            onClick = { onGroupClick(group.id) },
+                            shape = MaterialTheme.shapes.large,
+                            colors = CardDefaults.cardColors(containerColor = AppSurface),
+                            modifier = Modifier.fillMaxWidth().border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+                        ) {
+                            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier.size(44.dp).background(AppIndigo.copy(alpha = 0.1f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Groups, null, modifier = Modifier.size(22.dp), tint = AppIndigo)
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(group.name, fontWeight = FontWeight.SemiBold)
+                                    group.description?.takeIf { it.isNotBlank() }?.let {
+                                        Text(it, color = AppMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                    }
+                                    Text("${group.memberCount ?: 0} học sinh", color = AppMuted, style = MaterialTheme.typography.bodySmall)
+                                }
+                                IconButton(onClick = { showDeleteConfirm = group }) {
+                                    Icon(Icons.Default.Delete, "Xóa", tint = AppRed)
+                                }
+                                Icon(Icons.Default.ChevronRight, null, tint = AppMuted)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (message != null) {
+                Spacer(Modifier.height(8.dp))
+                InfoBanner(message.orEmpty(), AppRed, Icons.Default.ErrorOutline)
+            }
+        }
+    }
+
+    if (showCreateDialog) {
+        var name by remember { mutableStateOf("") }
+        var description by remember { mutableStateOf("") }
+        var saving by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { if (!saving) showCreateDialog = false },
+            title = { Text("Thêm lớp học mới") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(name, { name = it }, label = { Text("Tên lớp") }, enabled = !saving, shape = MaterialTheme.shapes.medium, singleLine = true)
+                    OutlinedTextField(description, { description = it }, label = { Text("Mô tả (không bắt buộc)") }, enabled = !saving, shape = MaterialTheme.shapes.medium, minLines = 2)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (name.isBlank()) return@TextButton
+                        val auth = SessionManager.authorizationHeader() ?: return@TextButton
+                        saving = true
+                        scope.launch {
+                            try {
+                                ApiClient.createGroup(auth, GroupCreateRequest(name = name.trim(), description = description.blankToNull()))
+                                showCreateDialog = false
+                                loadGroups()
+                            } catch (e: Exception) { message = "Không thể tạo lớp." } finally { saving = false }
+                        }
+                    },
+                    enabled = !saving && name.isNotBlank()
+                ) { if (saving) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Text("Tạo") }
+            },
+            dismissButton = { TextButton(onClick = { showCreateDialog = false }) { Text("Hủy") } }
+        )
+    }
+
+    showDeleteConfirm?.let { group ->
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = null },
+            title = { Text("Xóa lớp học") },
+            text = { Text("Bạn có chắc chắn muốn xóa lớp \"${group.name}\"? Học sinh trong lớp sẽ không bị ảnh hưởng.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val auth = SessionManager.authorizationHeader() ?: return@TextButton
+                    scope.launch {
+                        try {
+                            ApiClient.deleteGroup(auth, group.id)
+                            showDeleteConfirm = null
+                            loadGroups()
+                        } catch (e: Exception) { message = "Không thể xóa lớp." }
+                    }
+                }) { Text("Xóa", color = AppRed) }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = null }) { Text("Hủy") } }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun GroupDetailScreen(groupId: Long, onBack: () -> Unit) {
+    var group by remember { mutableStateOf<StudentGroupResponse?>(null) }
+    var members by remember { mutableStateOf<List<StudentGroupMemberResponse>>(emptyList()) }
+    var allStudents by remember { mutableStateOf<List<UserProfileResponse>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var editing by remember { mutableStateOf(false) }
+    var editName by remember { mutableStateOf("") }
+    var editDescription by remember { mutableStateOf("") }
+    var editSaving by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    fun loadData() {
+        val auth = SessionManager.authorizationHeader() ?: return
+        loading = true
+        scope.launch {
+            try {
+                val gResponse = ApiClient.getGroups(auth)
+                group = gResponse.data?.find { it.id == groupId }
+                val mResponse = ApiClient.getGroupMembers(auth, groupId)
+                members = mResponse.data.orEmpty()
+            } catch (e: Exception) {
+                message = "Không thể tải thông tin lớp học."
+            } finally { loading = false }
+        }
+    }
+
+    LaunchedEffect(groupId) { loadData() }
+
+    AppBackground {
+        ExamTopBar(group?.name ?: "Chi tiết lớp học", onBack)
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            if (loading) {
+                LoadingStateCard("Đang tải...")
+                return@AppBackground
+            }
+
+            if (message != null) {
+                InfoBanner(message.orEmpty(), AppRed, Icons.Default.ErrorOutline)
+                Spacer(Modifier.height(8.dp))
+            }
+
+            group?.let { g ->
+                Card(
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = AppSurface),
+                    modifier = Modifier.fillMaxWidth().border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(g.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                            OutlinedButton(onClick = {
+                                if (!editing) { editName = g.name; editDescription = g.description.orEmpty() }
+                                editing = !editing
+                            }) { Text(if (editing) "Hủy" else "Sửa") }
+                        }
+                        g.description?.takeIf { it.isNotBlank() }?.let {
+                            Spacer(Modifier.height(4.dp))
+                            Text(it, color = AppMuted)
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text("${members.size} học sinh", color = AppMuted, style = MaterialTheme.typography.bodySmall)
+
+                        if (editing) {
+                            Spacer(Modifier.height(12.dp))
+                            HorizontalDivider()
+                            Spacer(Modifier.height(12.dp))
+                            OutlinedTextField(editName, { editName = it }, label = { Text("Tên lớp") }, singleLine = true, shape = MaterialTheme.shapes.medium)
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(editDescription, { editDescription = it }, label = { Text("Mô tả") }, shape = MaterialTheme.shapes.medium, minLines = 2)
+                            Spacer(Modifier.height(8.dp))
+                            PrimaryAction(if (editSaving) "Đang lưu..." else "Lưu thay đổi") {
+                                if (editName.isBlank()) return@PrimaryAction
+                                val auth = SessionManager.authorizationHeader() ?: return@PrimaryAction
+                                editSaving = true
+                                scope.launch {
+                                    try {
+                                        ApiClient.updateGroup(auth, groupId, GroupCreateRequest(name = editName.trim(), description = editDescription.blankToNull()))
+                                        editing = false
+                                        loadData()
+                                    } catch (e: Exception) { message = "Không thể cập nhật lớp." } finally { editSaving = false }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Thành viên (${members.size})", fontWeight = FontWeight.Medium, color = AppMuted)
+                OutlinedButton(onClick = {
+                    searchQuery = ""
+                    val auth = SessionManager.authorizationHeader() ?: return@OutlinedButton
+                    scope.launch {
+                        try {
+                            allStudents = ApiClient.getUsers(auth).data.orEmpty()
+                                .filter { it.roles?.contains("STUDENT") == true }
+                        } catch (_: Exception) {}
+                    }
+                    showAddDialog = true
+                }) {
+                    Icon(Icons.Default.PersonAdd, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Thêm học sinh")
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+
+            if (members.isEmpty()) {
+                Card(
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = AppSurface),
+                    modifier = Modifier.fillMaxWidth().border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+                ) {
+                    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        Text("Chưa có học sinh nào trong lớp.", color = AppMuted)
+                    }
+                }
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(members) { member ->
+                        Card(
+                            shape = MaterialTheme.shapes.medium,
+                            colors = CardDefaults.cardColors(containerColor = AppSurface),
+                            modifier = Modifier.fillMaxWidth().border(1.dp, AppCardBorder, MaterialTheme.shapes.medium)
+                        ) {
+                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                AvatarCircle(member.fullName ?: member.username ?: "?", size = 36)
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(member.fullName ?: member.username ?: "--", fontWeight = FontWeight.Medium)
+                                    member.username?.let { Text("@$it", color = AppMuted, style = MaterialTheme.typography.bodySmall) }
+                                }
+                                IconButton(onClick = {
+                                    val auth = SessionManager.authorizationHeader() ?: return@IconButton
+                                    scope.launch {
+                                        try {
+                                            ApiClient.removeGroupMember(auth, groupId, member.userId)
+                                            loadData()
+                                        } catch (e: Exception) { message = "Không thể xóa học sinh khỏi lớp." }
+                                    }
+                                }) {
+                                    Icon(Icons.Default.Close, "Xóa khỏi lớp", tint = AppRed)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAddDialog) {
+        var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+        var adding by remember { mutableStateOf(false) }
+        val filtered = remember(searchQuery, allStudents) {
+            allStudents.filter { s ->
+                (s.fullName.contains(searchQuery, ignoreCase = true) ||
+                    s.username.contains(searchQuery, ignoreCase = true) ||
+                    (s.studentId?.contains(searchQuery, ignoreCase = true) == true)) &&
+                    members.none { it.userId == s.id }
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = { if (!adding) showAddDialog = false },
+            title = { Text("Thêm học sinh vào lớp") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        searchQuery, { searchQuery = it },
+                        label = { Text("Tìm kiếm học sinh...") },
+                        singleLine = true, shape = MaterialTheme.shapes.medium
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Đã chọn ${selectedIds.size} học sinh", color = AppIndigo, style = MaterialTheme.typography.bodySmall)
+                        if (filtered.isNotEmpty()) {
+                            val allFilteredSelected = filtered.all { it.id in selectedIds }
+                            TextButton(onClick = {
+                                selectedIds = if (allFilteredSelected) selectedIds - filtered.map { it.id }.toSet()
+                                else selectedIds + filtered.map { it.id }.toSet()
+                            }) {
+                                Text(if (allFilteredSelected) "Bỏ chọn tất cả" else "Chọn tất cả", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    if (message != null) {
+                        InfoBanner(message.orEmpty(), AppRed, Icons.Default.ErrorOutline)
+                        Spacer(Modifier.height(4.dp))
+                        message = null
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    if (allStudents.isEmpty()) {
+                        Text("Đang tải danh sách học sinh...", color = AppMuted)
+                    } else if (filtered.isEmpty()) {
+                        Text("Không tìm thấy học sinh phù hợp.", color = AppMuted)
+                    } else {
+                        LazyColumn(Modifier.heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            items(filtered) { student ->
+                                Row(
+                                    Modifier.fillMaxWidth().clickable {
+                                        selectedIds = if (student.id in selectedIds) selectedIds - student.id
+                                        else selectedIds + student.id
+                                    }.padding(vertical = 4.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = student.id in selectedIds,
+                                        onCheckedChange = { checked ->
+                                            selectedIds = if (checked) selectedIds + student.id
+                                            else selectedIds - student.id
+                                        },
+                                        colors = CheckboxDefaults.colors(checkedColor = AppIndigo)
+                                    )
+                                    AvatarCircle(student.fullName, size = 32)
+                                    Spacer(Modifier.width(8.dp))
+                                    Column {
+                                        Text(student.fullName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                        Text("@${student.username}", color = AppMuted, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (adding) {
+                    TextButton(onClick = {}, enabled = false) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) }
+                } else {
+                    TextButton(
+                        onClick = {
+                            if (selectedIds.isEmpty()) return@TextButton
+                            val auth = SessionManager.authorizationHeader() ?: return@TextButton
+                            adding = true
+                            scope.launch {
+                                try {
+                                    val resp = ApiClient.addGroupMember(auth, groupId, selectedIds.toList())
+                                    if (resp.success) {
+                                        showAddDialog = false
+                                        loadData()
+                                    } else {
+                                        message = resp.message
+                                    }
+                                } catch (e: Exception) {
+                                    message = try {
+                                        val body = (e as? retrofit2.HttpException)?.response()?.errorBody()?.string()
+                                        if (body != null) com.google.gson.Gson().fromJson(body, ApiResponse::class.java)?.message
+                                        else null
+                                    } catch (_: Exception) { null } ?: "Không thể thêm học sinh: ${e.message}"
+                                } finally { adding = false }
+                            }
+                        },
+                        enabled = selectedIds.isNotEmpty()
+                    ) { Text("Thêm (${selectedIds.size})") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { if (!adding) showAddDialog = false }) { Text("Hủy") } }
+        )
+    }
 }
 
