@@ -2815,7 +2815,7 @@ private fun formatDateTime(dateMillis: Long?, hour: Int, minute: Int): String? {
         set(Calendar.MINUTE, minute)
         set(Calendar.SECOND, 0)
     }
-    val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
+    val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US)
     return fmt.format(cal.time)
 }
 
