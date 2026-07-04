@@ -269,7 +269,7 @@ fun TeacherExamListScreen(
                         Column(Modifier.padding(16.dp)) {
                             Text(exam.title, style = MaterialTheme.typography.titleLarge)
                             Spacer(Modifier.height(4.dp))
-                            Text("Mã ${exam.code} - ID ${exam.id}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                            Text("Mã ${exam.code}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
                             Spacer(Modifier.height(12.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                                 OutlinedButton(onClick = { onViewQuestions(exam) }, modifier = Modifier.weight(1f)) {
@@ -750,7 +750,7 @@ fun QuestionBankScreen(
         pendingDeleteQuestion?.let { question ->
             ConfirmActionDialog(
                 title = "Xóa câu hỏi",
-                message = "Xóa câu hỏi ID ${question.id}? Hành động này không thể hoàn tác.",
+                message = "Xóa câu hỏi này? Hành động này không thể hoàn tác.",
                 confirmLabel = if (isLoading) "Đang xóa..." else "Xóa",
                 destructive = true,
                 processing = isLoading,
@@ -817,7 +817,6 @@ fun QuestionBankScreen(
                     Column(Modifier.padding(16.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(question.content, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            ChipText("ID ${question.id}", AppIndigo)
                         }
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3432,11 +3431,11 @@ fun LiveMonitoringScreen(onBack: () -> Unit) {
 
             report?.let { data ->
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    MetricCard("Tổng", data.totalResults.toString(), "thí sinh", AppBlue, Icons.Default.Person, modifier = Modifier.weight(1f).height(90.dp))
-                    MetricCard("Đã nộp", data.submittedCount.toString(), "xong", AppMint, Icons.Default.CheckCircle, modifier = Modifier.weight(1f).height(90.dp))
-                    MetricCard("Đang làm", (data.totalResults - data.submittedCount).toString(), "đang tiến hành", AppAmber, Icons.Default.Info, modifier = Modifier.weight(1f).height(90.dp))
-                }
+                MetricCard("Tổng", data.totalResults.toString(), "thí sinh", AppBlue, Icons.Default.Person, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                MetricCard("Đã nộp", data.submittedCount.toString(), "bài", AppMint, Icons.Default.CheckCircle, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                MetricCard("Đang làm", (data.totalResults - data.submittedCount).toString(), "bài", AppAmber, Icons.Default.Info, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
                 SectionTitle("Thí sinh")
                 val results = data.results.orEmpty()
@@ -3739,9 +3738,9 @@ fun ReportDashboardScreen(onBack: () -> Unit) {
         SectionTitle("Tổng quan")
                 MetricCard("Kết quả", data.totalResults.toString(), "bản ghi", AppBlue, Icons.Default.Assessment)
                 Spacer(Modifier.height(8.dp))
-                MetricCard("Đã nộp", data.submittedCount.toString(), "đã nộp", AppMint, Icons.Default.CheckCircle)
+                MetricCard("Đã nộp", data.submittedCount.toString(), "bài", AppMint, Icons.Default.CheckCircle)
                 Spacer(Modifier.height(8.dp))
-                MetricCard("Đang làm", data.doingCount.toString(), "đang tiến hành", AppAmber, Icons.Default.Info)
+                MetricCard("Đang làm", data.doingCount.toString(), "bài", AppAmber, Icons.Default.Info)
                 Spacer(Modifier.height(8.dp))
                 MetricCard("Trung bình", reportScore(data.averageScore), "điểm", AppViolet, Icons.Default.Assessment)
                 Spacer(Modifier.height(8.dp))
