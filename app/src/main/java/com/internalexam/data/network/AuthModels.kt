@@ -333,3 +333,34 @@ data class FileUploadResponse(
     val fileName: String,
     val url: String
 )
+
+data class ProctoringEventRequest(
+    val eventType: String,
+    val details: String?
+)
+
+data class ProctoringEventResponse(
+    val id: Long,
+    val examId: Long,
+    val studentId: Long,
+    val studentName: String?,
+    val username: String?,
+    val eventType: String,
+    val details: String?,
+    val createdAt: String?
+)
+
+data class ProctoringSummaryResponse(
+    val students: List<StudentProctoringStatus>?
+)
+
+data class StudentProctoringStatus(
+    val studentId: Long,
+    val studentName: String?,
+    val username: String?,
+    val latestEventType: String?,
+    val latestDetails: String?,
+    val latestEventAt: String?,
+    val hasAlert: Boolean?,
+    val alertLabel: String?
+)

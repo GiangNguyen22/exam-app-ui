@@ -106,7 +106,6 @@ import com.internalexam.data.examimport.ExamExcelQuestionRow
 import com.internalexam.data.examimport.ExamExcelTemplate
 import com.internalexam.data.questionimport.QuestionExcelTemplate
 import com.internalexam.data.network.ApiClient
-import com.internalexam.data.network.AuditLogResponse
 import com.internalexam.data.network.AnswerCreateRequest
 import com.internalexam.data.network.StudentGroupResponse
 import com.internalexam.data.network.ExamCreateRequest
@@ -117,6 +116,9 @@ import com.internalexam.data.network.ExamQuestionCreateRequest
 import com.internalexam.data.network.ExamQuestionResponse
 import com.internalexam.data.network.ExamResponse
 import com.internalexam.data.network.ExamUpdateRequest
+import com.internalexam.data.network.ProctoringEventResponse
+import com.internalexam.data.network.ProctoringSummaryResponse
+import com.internalexam.data.network.StudentProctoringStatus
 import com.internalexam.data.network.QuestionCreateRequest
 import com.internalexam.data.network.QuestionResponse
 import com.internalexam.data.network.SubjectCreateRequest
@@ -2815,7 +2817,7 @@ private fun formatDateTime(dateMillis: Long?, hour: Int, minute: Int): String? {
         set(Calendar.MINUTE, minute)
         set(Calendar.SECOND, 0)
     }
-    val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US)
+    val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
     return fmt.format(cal.time)
 }
 
@@ -3330,24 +3332,32 @@ fun LiveMonitoringScreen(onBack: () -> Unit) {
     var exams by remember { mutableStateOf<List<ExamResponse>>(emptyList()) }
     var selectedExam by remember { mutableStateOf<ExamResponse?>(null) }
     var report by remember { mutableStateOf<ExamReportResponse?>(null) }
-    var auditLogs by remember { mutableStateOf<List<AuditLogResponse>>(emptyList()) }
+    var proctoringSummary by remember { mutableStateOf<ProctoringSummaryResponse?>(null) }
+    var proctoringEvents by remember { mutableStateOf<List<ProctoringEventResponse>>(emptyList()) }
+    var showEventLog by remember { mutableStateOf(false) }
     var loadingExams by remember { mutableStateOf(true) }
     var loadingReport by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    fun loadAuditLogs() {
+    fun loadData(examId: Long) {
+        val auth = SessionManager.authorizationHeader() ?: return
         scope.launch {
-            val auth = SessionManager.authorizationHeader() ?: return@launch
             runCatching {
-                val response = ApiClient.getAuditLogs(auth)
-                if (response.success) {
-                    auditLogs = response.data.orEmpty()
-                        .filter { log ->
-                            selectedExam == null || log.resourceId == selectedExam?.id
-                        }
-                        .sortedByDescending { it.createdAt.orEmpty() }
-                }
+                val summaryResp = ApiClient.getProctoringSummary(auth, examId)
+                if (summaryResp.success) proctoringSummary = summaryResp.data
+            }
+        }
+        scope.launch {
+            runCatching {
+                val eventsResp = ApiClient.getProctoringEvents(auth, examId)
+                if (eventsResp.success) proctoringEvents = eventsResp.data.orEmpty()
+            }
+        }
+        scope.launch {
+            runCatching {
+                val reportResp = ApiClient.getExamReport(auth, examId)
+                if (reportResp.success) report = reportResp.data
             }
         }
     }
@@ -3373,30 +3383,17 @@ fun LiveMonitoringScreen(onBack: () -> Unit) {
     }
 
     LaunchedEffect(selectedExam?.id) {
-        val exam = selectedExam ?: return@LaunchedEffect
-        val auth = SessionManager.authorizationHeader() ?: return@LaunchedEffect
+        val examId = selectedExam?.id ?: return@LaunchedEffect
         loadingReport = true
-        try {
-            val response = ApiClient.getExamReport(auth, exam.id)
-            report = response.data
-        } catch (e: Exception) {
-            message = "Không thể tải báo cáo."
-        } finally {
-            loadingReport = false
-        }
-        loadAuditLogs()
+        loadData(examId)
+        loadingReport = false
     }
 
     LaunchedEffect(selectedExam?.id) {
+        val examId = selectedExam?.id ?: return@LaunchedEffect
         while (true) {
             delay(10_000L)
-            loadAuditLogs()
-            val exam = selectedExam ?: continue
-            val auth = SessionManager.authorizationHeader() ?: continue
-            runCatching {
-                val response = ApiClient.getExamReport(auth, exam.id)
-                if (response.success) report = response.data
-            }
+            loadData(examId)
         }
     }
 
@@ -3436,52 +3433,144 @@ fun LiveMonitoringScreen(onBack: () -> Unit) {
                 MetricCard("Đã nộp", data.submittedCount.toString(), "bài", AppMint, Icons.Default.CheckCircle, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
                 MetricCard("Đang làm", (data.totalResults - data.submittedCount).toString(), "bài", AppAmber, Icons.Default.Info, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                SectionTitle("Thí sinh")
-                val results = data.results.orEmpty()
-                if (results.isEmpty()) {
-                    InfoBanner("Chưa có thí sinh.", AppAmber, Icons.Default.Info)
+            }
+
+            Spacer(Modifier.height(8.dp))
+            SectionTitle("Trạng thái giám sát")
+
+            val summaryStudents = proctoringSummary?.students.orEmpty()
+            if (summaryStudents.isEmpty() && report?.results.orEmpty().isEmpty()) {
+                InfoBanner("Chưa có thí sinh.", AppAmber, Icons.Default.Info)
+            } else {
+                val reportResults = report?.results.orEmpty()
+                val alertCount = summaryStudents.count { it.hasAlert == true }
+                if (alertCount > 0) {
+                    InfoBanner("$alertCount thí sinh có cảnh báo!", AppRed, Icons.Default.Warning)
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                summaryStudents.forEach { student ->
+                    val reportItem = reportResults.find { it.studentId == student.studentId }
+                    val hasAlert = student.hasAlert == true
+                    val bgColor = if (hasAlert) AppRed.copy(alpha = 0.05f) else AppSurface
+                    val borderColor = if (hasAlert) AppRed else AppCardBorder
+
+                    Card(
+                        shape = MaterialTheme.shapes.large,
+                        colors = CardDefaults.cardColors(containerColor = bgColor),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .border(1.dp, borderColor, MaterialTheme.shapes.large)
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                val initialColor = if (hasAlert) AppRed else (reportStatusColor(reportItem?.status ?: "DOING"))
+                                Box(
+                                    Modifier
+                                        .size(40.dp)
+                                        .background(initialColor.copy(alpha = 0.12f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        (student.studentName?.firstOrNull()?.uppercase() ?: "?"),
+                                        fontWeight = FontWeight.Bold,
+                                        color = initialColor
+                                    )
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(student.studentName ?: student.username ?: "Thí sinh #${student.studentId}", fontWeight = FontWeight.SemiBold)
+                                    if (hasAlert && student.alertLabel != null) {
+                                        Text(
+                                            "⚠ ${student.alertLabel}",
+                                            color = AppRed,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                    if (student.latestEventAt != null) {
+                                        Text(
+                                            student.latestEventAt.replace("T", " ").take(19),
+                                            color = AppMuted,
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
+                                if (reportItem != null) {
+                                    Text(
+                                        reportItem.score?.takeIf { it.isNotBlank() }?.let { "$it / 10" } ?: "--",
+                                        fontWeight = FontWeight.Bold,
+                                        color = initialColor
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SectionTitle("Sự kiện gần đây")
+                TextButton(onClick = { showEventLog = !showEventLog }) {
+                    Text(if (showEventLog) "Thu gọn" else "Xem chi tiết")
+                }
+            }
+
+            if (showEventLog) {
+                if (proctoringEvents.isEmpty()) {
+                    InfoBanner("Chưa có sự kiện nào.", AppAmber, Icons.Default.Info)
                 } else {
-                    results.forEach { result ->
-                        val statusColor = reportStatusColor(result.status)
-                        val studentName = result.studentName?.takeIf { it.isNotBlank() }
-                            ?: result.username?.takeIf { it.isNotBlank() }
-                            ?: result.studentCode?.takeIf { it.isNotBlank() }
-                            ?: "Thí sinh #${result.studentId}"
+                    proctoringEvents.take(50).forEach { event ->
+                        val eventColor = when (event.eventType) {
+                            "SCREENSHOT", "CONNECTION_LOST" -> AppRed
+                            "FOCUS_LOST" -> AppAmber
+                            "FOCUS_RESTORED", "CONNECTION_RESTORED" -> AppMint
+                            else -> AppMuted
+                        }
+                        val eventIcon = when (event.eventType) {
+                            "SCREENSHOT" -> Icons.Default.Warning
+                            "CONNECTION_LOST" -> Icons.Default.WifiOff
+                            "CONNECTION_RESTORED" -> Icons.Default.CloudDone
+                            "FOCUS_LOST" -> Icons.Default.VisibilityOff
+                            "FOCUS_RESTORED" -> Icons.Default.Visibility
+                            else -> Icons.Default.Info
+                        }
                         Card(
                             shape = MaterialTheme.shapes.large,
                             colors = CardDefaults.cardColors(containerColor = AppSurface),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 8.dp)
+                                .padding(bottom = 6.dp)
                                 .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
                         ) {
-                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(
                                     Modifier
-                                        .size(40.dp)
-                                        .background(statusColor.copy(alpha = 0.12f), CircleShape),
+                                        .size(34.dp)
+                                        .background(eventColor.copy(alpha = 0.1f), CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(
-                                        studentName.first().toString().uppercase(),
-                                        fontWeight = FontWeight.Bold,
-                                        color = statusColor
-                                    )
+                                    Icon(eventIcon, null, tint = eventColor, modifier = Modifier.size(16.dp))
                                 }
-                                Spacer(Modifier.width(12.dp))
+                                Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
-                                    Text(studentName, fontWeight = FontWeight.SemiBold)
+                                    Text(event.studentName ?: event.username ?: "Không xác định", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
                                     Text(
-                                        reportStatusLabel(result.status),
-                                        color = statusColor,
-                                        style = MaterialTheme.typography.bodyMedium
+                                        event.details ?: event.eventType,
+                                        color = eventColor,
+                                        style = MaterialTheme.typography.labelSmall
                                     )
                                 }
                                 Text(
-                                    result.score?.takeIf { it.isNotBlank() }?.let { "$it / 10" } ?: "--",
-                                    fontWeight = FontWeight.Bold,
-                                    color = statusColor
+                                    event.createdAt?.replace("T", " ")?.take(16) ?: "",
+                                    color = AppMuted,
+                                    style = MaterialTheme.typography.labelSmall
                                 )
                             }
                         }
@@ -3489,60 +3578,6 @@ fun LiveMonitoringScreen(onBack: () -> Unit) {
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
-            SectionTitle("Nhật ký hoạt động")
-            if (auditLogs.isEmpty()) {
-                InfoBanner("Chưa có hoạt động nào.", AppAmber, Icons.Default.Info)
-            } else {
-                auditLogs.forEach { log ->
-                    val logColor = when (log.action) {
-                        "SCREENSHOT", "APP_EXIT" -> AppRed
-                        "FOCUS_LOST" -> AppAmber
-                        "FOCUS_RESTORED" -> AppMint
-                        else -> AppMuted
-                    }
-                    val logIcon = when (log.action) {
-                        "SCREENSHOT" -> Icons.Default.Warning
-                        "APP_EXIT" -> Icons.AutoMirrored.Filled.ExitToApp
-                        "FOCUS_LOST" -> Icons.Default.VisibilityOff
-                        "FOCUS_RESTORED" -> Icons.Default.Visibility
-                        else -> Icons.Default.Info
-                    }
-                    Card(
-                        shape = MaterialTheme.shapes.large,
-                        colors = CardDefaults.cardColors(containerColor = AppSurface),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 6.dp)
-                            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
-                    ) {
-                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                Modifier
-                                    .size(34.dp)
-                                    .background(logColor.copy(alpha = 0.1f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(logIcon, null, tint = logColor, modifier = Modifier.size(16.dp))
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(log.username ?: "Không xác định", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-                                Text(
-                                    log.action + log.reason?.let { " - $it" }.orEmpty(),
-                                    color = logColor,
-                                    style = MaterialTheme.typography.labelSmall
-                                )
-                            }
-                            Text(
-                                log.createdAt?.replace("T", " ")?.take(16) ?: "",
-                                color = AppMuted,
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
-                    }
-                }
-            }
             Spacer(Modifier.height(ScreenBottomPadding))
         }
     }

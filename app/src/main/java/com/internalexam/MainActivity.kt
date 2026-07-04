@@ -9,7 +9,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.internalexam.data.ExamAttemptStore
 import com.internalexam.data.SessionManager
-import com.internalexam.monitor.ExamEventBuffer
+import com.internalexam.monitor.ProctoringEventBuffer
 import com.internalexam.monitor.NetworkMonitor
 import com.internalexam.navigation.InternalExamApp
 import com.internalexam.ui.theme.InternalExamTheme
@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
         SessionManager.initialize(applicationContext)
         ExamAttemptStore.initialize(applicationContext)
         NetworkMonitor.initialize(applicationContext)
-        ExamEventBuffer.initialize(applicationContext)
+        ProctoringEventBuffer.initialize(applicationContext)
         ExamAttemptStore.restoreState()
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 

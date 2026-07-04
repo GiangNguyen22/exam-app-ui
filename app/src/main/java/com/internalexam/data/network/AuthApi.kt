@@ -260,4 +260,23 @@ interface AuthApi {
         @Body request: AuditLogCreateRequest
     ): ApiResponse<AuditLogResponse>
 
+    @POST("api/exams/{examId}/proctoring-events")
+    suspend fun createProctoringEvent(
+        @Header("Authorization") authorization: String,
+        @Path("examId") examId: Long,
+        @Body request: ProctoringEventRequest
+    ): ApiResponse<ProctoringEventResponse>
+
+    @GET("api/exams/{examId}/proctoring-events")
+    suspend fun getProctoringEvents(
+        @Header("Authorization") authorization: String,
+        @Path("examId") examId: Long
+    ): ApiResponse<List<ProctoringEventResponse>>
+
+    @GET("api/exams/{examId}/proctoring-events/summary")
+    suspend fun getProctoringSummary(
+        @Header("Authorization") authorization: String,
+        @Path("examId") examId: Long
+    ): ApiResponse<ProctoringSummaryResponse>
+
 }
