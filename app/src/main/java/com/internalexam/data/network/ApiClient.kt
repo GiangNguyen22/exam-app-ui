@@ -11,10 +11,7 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
     private val backendUrls = listOf(
-        "http://127.0.0.1:8080/",
-        "http://10.0.2.2:8080/",
-        "http://10.0.3.2:8080/",
-        "http://192.168.0.104:8080/"
+        "http://103.72.57.63:8080/"
     )
 
     private val httpClient = OkHttpClient.Builder()
@@ -211,6 +208,18 @@ object ApiClient {
 
     suspend fun createAuditLog(authorization: String, request: AuditLogCreateRequest): ApiResponse<AuditLogResponse> {
         return callBackend { it.createAuditLog(authorization, request) }
+    }
+
+    suspend fun createProctoringEvent(authorization: String, examId: Long, request: ProctoringEventRequest): ApiResponse<ProctoringEventResponse> {
+        return callBackend { it.createProctoringEvent(authorization, examId, request) }
+    }
+
+    suspend fun getProctoringEvents(authorization: String, examId: Long): ApiResponse<List<ProctoringEventResponse>> {
+        return callBackend { it.getProctoringEvents(authorization, examId) }
+    }
+
+    suspend fun getProctoringSummary(authorization: String, examId: Long): ApiResponse<ProctoringSummaryResponse> {
+        return callBackend { it.getProctoringSummary(authorization, examId) }
     }
 
     private suspend fun <T> callBackend(block: suspend (AuthApi) -> T): T {

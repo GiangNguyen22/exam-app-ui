@@ -81,8 +81,8 @@ import com.internalexam.data.ExamAttemptStore
 import com.internalexam.data.SessionManager
 import com.internalexam.data.network.ApiClient
 import com.internalexam.monitor.AppLifecycleMonitor
-import com.internalexam.monitor.ExamEventBuffer
 import com.internalexam.monitor.NetworkMonitor
+import com.internalexam.monitor.ProctoringEventBuffer
 import com.internalexam.data.network.ExamResponse
 import com.internalexam.data.network.ExamQuestionResponse
 import com.internalexam.data.network.ExamResultDetailResponse
@@ -790,7 +790,7 @@ fun ExamTakingScreen(
     val progress = if (totalQuestions > 0) ExamAttemptStore.answeredCount.toFloat() / totalQuestions else 0f
 
     suspend fun submitBecauseTimeExpired() {
-        ExamEventBuffer.flush()
+        ProctoringEventBuffer.flush()
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) {
             loadMessage = "Hết giờ nhưng phiên đăng nhập không còn hợp lệ."
@@ -862,6 +862,21 @@ fun ExamTakingScreen(
 
     LaunchedEffect(ExamAttemptStore.backendExamId) {
         AppLifecycleMonitor.start(ExamAttemptStore.backendExamId)
+    }
+    LaunchedEffect(ExamAttemptStore.backendExamId) {
+        var wasOnline = NetworkMonitor.isOnline.value
+        while (true) {
+            delay(5_000L)
+            val nowOnline = NetworkMonitor.isOnline.value
+            if (wasOnline != nowOnline) {
+                if (nowOnline) {
+                    ProctoringEventBuffer.push("CONNECTION_RESTORED", "Thí sinh đã kết nối lại")
+                } else {
+                    ProctoringEventBuffer.push("CONNECTION_LOST", "Thí sinh mất kết nối mạng")
+                }
+                wasOnline = nowOnline
+            }
+        }
     }
     DisposableEffect(Unit) {
         onDispose { AppLifecycleMonitor.stop() }
@@ -1111,7 +1126,7 @@ fun SubmitConfirmationScreen(onConfirm: () -> Unit, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     fun submit() {
-        ExamEventBuffer.flush()
+        ProctoringEventBuffer.flush()
         val authorization = SessionManager.authorizationHeader()
         if (authorization == null) { message = "Vui lòng đăng nhập lại."; return }
         scope.launch {

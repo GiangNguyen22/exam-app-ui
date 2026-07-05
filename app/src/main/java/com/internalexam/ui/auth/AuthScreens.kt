@@ -179,8 +179,8 @@ fun SplashScreen(onContinue: () -> Unit) {
 
 @Composable
 fun LoginScreen(onLogin: (Role) -> Unit) {
-    var username by remember { mutableStateOf("student1") }
-    var password by remember { mutableStateOf("student123") }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
