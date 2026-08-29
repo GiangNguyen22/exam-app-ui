@@ -1,6 +1,5 @@
 package com.internalexam
 
-import android.view.WindowManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,7 +22,6 @@ class MainActivity : ComponentActivity() {
         NetworkMonitor.initialize(applicationContext)
         ProctoringEventBuffer.initialize(applicationContext)
         ExamAttemptStore.restoreState()
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         lifecycle.addObserver(LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
