@@ -11,13 +11,22 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
     private val backendUrls = listOf(
-        "http://103.72.57.63:8080/"
+        "http://10.0.2.2:8080/",
+        "http://103.72.57.63:8080/",
+        "http://127.0.0.1:8080/",
+        "http://localhost:8080/"
     )
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(2, TimeUnit.SECONDS)
-        .readTimeout(5, TimeUnit.SECONDS)
-        .writeTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .build()
+
+    private val aiHttpClient = httpClient.newBuilder()
+        .connectTimeout(2, TimeUnit.SECONDS)
+        .readTimeout(90, TimeUnit.SECONDS)
+        .writeTimeout(90, TimeUnit.SECONDS)
         .build()
 
     suspend fun login(request: LoginRequest): ApiResponse<LoginResponse> {
@@ -222,12 +231,15 @@ object ApiClient {
         return callBackend { it.getProctoringSummary(authorization, examId) }
     }
 
-    private suspend fun <T> callBackend(block: suspend (AuthApi) -> T): T {
+    suspend fun explainAnswer(authorization: String, request: AiExplainRequest): ApiResponse<AiExplainResponse> {
+        return callBackend(aiHttpClient) { it.explainAnswer(authorization, request) }
+    }
+    private suspend fun <T> callBackend(client: OkHttpClient = httpClient, block: suspend (AuthApi) -> T): T {
         var lastException: IOException? = null
 
         for (baseUrl in backendUrls) {
             try {
-                return block(createAuthApi(baseUrl))
+                return block(createAuthApi(baseUrl, client))
             } catch (exception: IOException) {
                 lastException = exception
             }
@@ -236,10 +248,10 @@ object ApiClient {
         throw lastException ?: IOException("Cannot connect to backend")
     }
 
-    private fun createAuthApi(baseUrl: String): AuthApi {
+    private fun createAuthApi(baseUrl: String, client: OkHttpClient = httpClient): AuthApi {
         return Retrofit.Builder()
             .baseUrl(baseUrl)
-            .client(httpClient)
+            .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(AuthApi::class.java)

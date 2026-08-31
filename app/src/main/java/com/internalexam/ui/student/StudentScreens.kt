@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.EventBusy
@@ -48,6 +50,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -1345,7 +1349,261 @@ fun ResultScreen(onBack: () -> Unit) {
                     Text("Nộp lúc: ${resultDate(detail?.submittedAt)}", color = AppMuted)
                 }
             }
+
+            val questions = detail?.questions
+            if (questions != null) {
+                SectionTitle("Chi tiết & Giải thích AI", "Nhấn để xem giải thích bằng AI cho từng câu")
+                questions.forEach { question ->
+                    AiExplanableQuestionCard(
+                        question = question,
+                        subject = detail?.examTitle
+                    )
+                }
+            }
+
             Spacer(Modifier.height(ScreenBottomPadding))
         }
     }
+}
+
+@Composable
+private fun AnswerDetailRow(label: String, value: String, valueColor: Color) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Text(
+            label,
+            color = AppMuted,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.width(100.dp)
+        )
+        Text(
+            value,
+            color = valueColor,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun AiExplanableQuestionCard(
+    question: com.internalexam.data.network.ResultQuestionResponse,
+    subject: String?
+) {
+    var explainState by remember { mutableStateOf<ExplainState>(ExplainState.Idle) }
+
+    val correctAnswerText = question.answers
+        ?.filter { it.correct == true }
+        ?.joinToString(", ") { it.content }
+        ?: ""
+
+    val studentAnswerText = run {
+        val selectedIds = question.selectedAnswerIds.orEmpty().toSet()
+        if (selectedIds.isEmpty() && question.fillContent != null) {
+            question.fillContent
+        } else {
+            question.answers
+                ?.filter { it.id in selectedIds }
+                ?.joinToString(", ") { it.content }
+                ?: ""
+        }
+    }
+
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = AppSurface),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val isCorrect = question.correct == true
+            val statusColor = if (isCorrect) AppMint else AppRed
+            val statusLabel = if (question.blank == true) "Bỏ trống" else if (isCorrect) "Đúng" else "Sai"
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Câu ${question.orderIndex?.takeIf { it > 0 } ?: "?"}",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(Modifier.weight(1f))
+                Surface(
+                    color = statusColor.copy(alpha = 0.12f),
+                    shape = CircleShape,
+                    modifier = Modifier.border(1.dp, statusColor.copy(alpha = 0.35f), CircleShape)
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (statusLabel == "Đúng") Icons.Default.CheckCircle else Icons.Default.Close,
+                            contentDescription = null,
+                            tint = statusColor,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            statusLabel,
+                            color = statusColor,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            Text(
+                question.content,
+                color = AppText,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+
+            if (studentAnswerText.isNotBlank()) {
+                AnswerDetailRow(
+                    label = "Bài làm",
+                    value = studentAnswerText,
+                    valueColor = if (isCorrect) AppMint else AppCoral
+                )
+            } else if (question.fillContent != null) {
+                AnswerDetailRow("Bài làm", question.fillContent.orEmpty(), if (isCorrect) AppMint else AppCoral)
+            }
+
+            if (question.correct != true && correctAnswerText.isNotBlank()) {
+                AnswerDetailRow(label = "Đáp án đúng", value = correctAnswerText, valueColor = AppMint)
+            }
+
+            when (val state = explainState) {
+                is ExplainState.Idle -> {
+                    OutlinedButton(
+                        onClick = { explainState = ExplainState.Loading },
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.PhoneAndroid, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Giải thích bằng AI")
+                    }
+                }
+                is ExplainState.Loading -> {
+                    Surface(
+                        color = AppIndigo.copy(alpha = 0.06f),
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, AppIndigo.copy(alpha = 0.2f), MaterialTheme.shapes.medium)
+                    ) {
+                        Row(
+                            Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.5.dp,
+                                color = AppIndigo
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text("Đang tạo giải thích...", color = AppIndigo, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+                is ExplainState.Error -> {
+                    Card(
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(containerColor = AppRed.copy(alpha = 0.06f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, AppRed.copy(alpha = 0.25f), MaterialTheme.shapes.medium)
+                    ) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.ErrorOutline, null, tint = AppRed, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Không thể giải thích", color = AppRed, fontWeight = FontWeight.Bold)
+                            }
+                            Text(state.message, color = AppMuted, style = MaterialTheme.typography.bodySmall)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                TextButton(onClick = { explainState = ExplainState.Idle }) {
+                                    Text("Thử lại")
+                                }
+                            }
+                        }
+                    }
+                }
+                is ExplainState.Success -> {
+                    Card(
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(containerColor = AppIndigo.copy(alpha = 0.07f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, AppIndigo.copy(alpha = 0.22f), MaterialTheme.shapes.medium)
+                    ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    color = AppIndigo.copy(alpha = 0.14f),
+                                    shape = CircleShape,
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.PhoneAndroid, null, tint = AppIndigo, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Text("Giải thích AI", color = AppIndigo, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                            }
+                            HorizontalDivider(color = AppIndigo.copy(alpha = 0.15f))
+                            Text(
+                                state.explanation,
+                                color = AppText,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                TextButton(onClick = { explainState = ExplainState.Idle }) {
+                                    Text("Ẩn", color = AppIndigo)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (explainState is ExplainState.Loading) {
+        LaunchedEffect(question.questionId) {
+            explainState = ExplainState.Loading
+            val authorization = SessionManager.authorizationHeader()
+            if (authorization == null) {
+                explainState = ExplainState.Error("Vui lòng đăng nhập lại.")
+                return@LaunchedEffect
+            }
+            val request = com.internalexam.data.network.AiExplainRequest(
+                question = question.content,
+                correctAnswer = correctAnswerText.ifBlank { null },
+                studentAnswer = studentAnswerText.ifBlank { null },
+                correct = question.correct == true,
+                subject = subject
+            )
+            explainState = try {
+                val response = ApiClient.explainAnswer(authorization, request)
+                val text = response.data?.explanation
+                if (text != null) ExplainState.Success(text)
+                else ExplainState.Error("Không thể tạo giải thích lúc này.")
+            } catch (e: Exception) {
+                ExplainState.Error("Lỗi kết nối. Vui lòng thử lại.")
+            }
+        }
+    }
+}
+
+private sealed class ExplainState {
+    object Idle : ExplainState()
+    object Loading : ExplainState()
+    data class Success(val explanation: String) : ExplainState()
+    data class Error(val message: String) : ExplainState()
 }

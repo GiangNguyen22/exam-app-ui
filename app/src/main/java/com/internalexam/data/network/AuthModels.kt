@@ -364,3 +364,15 @@ data class StudentProctoringStatus(
     val hasAlert: Boolean?,
     val alertLabel: String?
 )
+
+data class AiExplainRequest(
+    val question: String,
+    val correctAnswer: String?,
+    val studentAnswer: String?,
+    val correct: Boolean,
+    val subject: String?
+)
+
+data class AiExplainResponse(
+    val explanation: String
+)

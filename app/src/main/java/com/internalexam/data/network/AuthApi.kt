@@ -279,4 +279,10 @@ interface AuthApi {
         @Path("examId") examId: Long
     ): ApiResponse<ProctoringSummaryResponse>
 
+    @POST("api/ai/explain")
+    suspend fun explainAnswer(
+        @Header("Authorization") authorization: String,
+        @Body request: AiExplainRequest
+    ): ApiResponse<AiExplainResponse>
+
 }
