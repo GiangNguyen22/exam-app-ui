@@ -2049,6 +2049,7 @@ private fun QuickAddDialog(
 fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
     var randomQuestion by remember { mutableStateOf(true) }
     var randomAnswer by remember { mutableStateOf(true) }
+    var showAnswersAfterSubmit by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("Đề thi thực hành Android") }
     var duration by remember { mutableStateOf("45") }
     var openDateMillis by remember { mutableStateOf<Long?>(null) }
@@ -2212,6 +2213,7 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                         endTime = formatDateTime(closeDateMillis, closeHour, closeMinute),
                         shuffleQuestions = randomQuestion,
                         shuffleAnswers = randomAnswer,
+                        showAnswersAfterSubmit = showAnswersAfterSubmit,
                         groupIds = selectedGroupIds.toList().ifEmpty { null }
                     )
                 )
@@ -2422,6 +2424,11 @@ fun CreateExamScreen(onGenerate: () -> Unit, onBack: () -> Unit) {
                             Column { Text("Xáo trộn đáp án", fontWeight = FontWeight.Medium); Text("Xáo trộn thứ tự đáp án", color = AppMuted, style = MaterialTheme.typography.bodyMedium) }
                             Switch(randomAnswer, { randomAnswer = it }, colors = SwitchDefaults.colors(checkedTrackColor = AppIndigo))
                         }
+                        HorizontalDivider(Modifier.padding(vertical = 10.dp), color = AppCardBorder)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text("Xem đáp án sau khi nộp", fontWeight = FontWeight.Medium); Text("Học sinh xem được đáp án đúng và giải thích ngay sau khi nộp bài", color = AppMuted, style = MaterialTheme.typography.bodyMedium) }
+                            Switch(showAnswersAfterSubmit, { showAnswersAfterSubmit = it }, colors = SwitchDefaults.colors(checkedTrackColor = AppIndigo))
+                        }
                     }
                 }
 
@@ -2481,6 +2488,7 @@ fun EditExamScreen(onBack: () -> Unit) {
     val exam = ExamAttemptStore.selectedExam.value
     var randomQuestion by remember(exam?.id) { mutableStateOf(exam?.shuffleQuestions ?: true) }
     var randomAnswer by remember(exam?.id) { mutableStateOf(exam?.shuffleAnswers ?: true) }
+    var showAnswersAfterSubmit by remember(exam?.id) { mutableStateOf(exam?.showAnswersAfterSubmit ?: false) }
     var title by remember(exam?.id) { mutableStateOf(exam?.title.orEmpty()) }
     var duration by remember(exam?.id) { mutableStateOf(exam?.durationMinutes?.toString() ?: "45") }
     var questionCount by remember(exam?.id) {
@@ -2570,6 +2578,7 @@ fun EditExamScreen(onBack: () -> Unit) {
                         endTime = closeDt,
                         shuffleQuestions = randomQuestion,
                         shuffleAnswers = randomAnswer,
+                        showAnswersAfterSubmit = showAnswersAfterSubmit,
                         groupIds = selectedGroupIds.toList().ifEmpty { null }
                     )
                 )
@@ -2720,6 +2729,11 @@ fun EditExamScreen(onBack: () -> Unit) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column { Text("Xáo trộn đáp án", fontWeight = FontWeight.Medium); Text("Xáo trộn thứ tự đáp án", color = AppMuted, style = MaterialTheme.typography.bodyMedium) }
                             Switch(randomAnswer, { randomAnswer = it }, enabled = !loading && exam != null, colors = SwitchDefaults.colors(checkedTrackColor = AppIndigo))
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 10.dp), color = AppCardBorder)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text("Xem đáp án sau khi nộp", fontWeight = FontWeight.Medium); Text("Học sinh xem được đáp án đúng và giải thích ngay sau khi nộp bài", color = AppMuted, style = MaterialTheme.typography.bodyMedium) }
+                            Switch(showAnswersAfterSubmit, { showAnswersAfterSubmit = it }, enabled = !loading && exam != null, colors = SwitchDefaults.colors(checkedTrackColor = AppIndigo))
                         }
                     }
                 }

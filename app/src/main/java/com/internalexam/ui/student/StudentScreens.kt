@@ -1359,6 +1359,12 @@ fun ResultScreen(onBack: () -> Unit) {
                         subject = detail?.examTitle
                     )
                 }
+            } else if (detail != null) {
+                InfoBanner(
+                    "Giáo viên chưa mở xem đáp án cho đề thi này.",
+                    AppMuted,
+                    Icons.Default.Info
+                )
             }
 
             Spacer(Modifier.height(ScreenBottomPadding))

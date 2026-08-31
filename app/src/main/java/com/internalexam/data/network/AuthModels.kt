@@ -96,6 +96,7 @@ data class ExamCreateRequest(
     val endTime: String?,
     val shuffleQuestions: Boolean,
     val shuffleAnswers: Boolean,
+    val showAnswersAfterSubmit: Boolean = false,
     val groupIds: List<Long>? = null
 )
 
@@ -107,6 +108,7 @@ data class ExamUpdateRequest(
     val endTime: String?,
     val shuffleQuestions: Boolean,
     val shuffleAnswers: Boolean,
+    val showAnswersAfterSubmit: Boolean = false,
     val groupIds: List<Long>? = null
 )
 
@@ -134,6 +136,7 @@ data class ExamResponse(
     val endTime: String?,
     val shuffleQuestions: Boolean?,
     val shuffleAnswers: Boolean?,
+    val showAnswersAfterSubmit: Boolean? = false,
     val subject: String? = null,
     val subjectName: String? = null,
     val questionCount: Int? = null,
