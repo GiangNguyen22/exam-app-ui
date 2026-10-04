@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 object ApiClient {
     private val backendUrls = listOf(
         "http://10.0.2.2:8080/",
-        "http://103.72.57.63:8080/",
+        "http://180.93.43.211:8080/",
         "http://127.0.0.1:8080/",
         "http://localhost:8080/"
     )
