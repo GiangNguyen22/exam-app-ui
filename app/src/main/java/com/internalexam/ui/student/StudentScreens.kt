@@ -408,6 +408,13 @@ fun StudentResultsScreen(onOpenResult: (ExamResponse) -> Unit, onBack: () -> Uni
 @Composable
 fun ExamLobbyScreen(onStart: () -> Unit, onBack: () -> Unit) {
     val exam = ExamAttemptStore.selectedExam.value
+    val canStart = exam?.isOpenNow() == true
+    val lobbyStatus = when {
+        exam == null -> "Chưa có đề để bắt đầu"
+        canStart -> "Có thể bắt đầu làm bài"
+        exam.isNotOpenYet() -> "Chưa đến thời gian mở thi"
+        else -> "Đã hết thời gian tham gia"
+    }
     AppBackground {
         ExamTopBar("Phòng thi", onBack)
         GradientHero(
@@ -418,9 +425,9 @@ fun ExamLobbyScreen(onStart: () -> Unit, onBack: () -> Unit) {
         SectionTitle("Trạng thái đề thi")
         MetricCard(
             "Gói đề thi",
-            if (exam != null) "Sẵn sàng" else "Chưa sẵn sàng",
-            if (exam != null) "Có thể bắt đầu làm bài" else "Chưa có đề để bắt đầu",
-            if (exam != null) AppMint else AppAmber,
+            if (canStart) "Sẵn sàng" else "Chưa sẵn sàng",
+            lobbyStatus,
+            if (canStart) AppMint else AppAmber,
             Icons.Default.CloudDone
         )
 
@@ -446,7 +453,7 @@ fun ExamLobbyScreen(onStart: () -> Unit, onBack: () -> Unit) {
         }
 
         Spacer(Modifier.weight(1f))
-        PrimaryAction("Bắt đầu làm bài", enabled = exam != null, onClick = onStart)
+        PrimaryAction("Bắt đầu làm bài", enabled = canStart, onClick = onStart)
         Spacer(Modifier.height(ScreenBottomPadding))
     }
 }

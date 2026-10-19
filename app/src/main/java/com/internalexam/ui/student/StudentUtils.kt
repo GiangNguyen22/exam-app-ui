@@ -173,6 +173,10 @@ fun ExamResponse.isOpenNow(now: Long = System.currentTimeMillis()): Boolean {
     return (startAt == null || startAt <= now) && (endAt == null || endAt > now)
 }
 
+fun ExamResponse.isNotOpenYet(now: Long = System.currentTimeMillis()): Boolean {
+    return startTime.parseBackendTimeMillis()?.let { it > now } == true
+}
+
 fun String?.parseBackendTimeMillis(): Long? {
     val raw = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val patterns = listOf(
