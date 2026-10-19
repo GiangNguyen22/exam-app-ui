@@ -5,8 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.internalexam.data.SessionManager
 import com.internalexam.data.network.ApiClient
 import com.internalexam.data.network.AuditLogResponse
-import com.internalexam.data.network.RbacMatrixResponse
-import com.internalexam.data.network.StudentGroupDetailResponse
 import com.internalexam.data.network.StudentGroupResponse
 import com.internalexam.data.network.UserCreateRequest
 import com.internalexam.data.network.UserProfileResponse
@@ -55,7 +53,11 @@ class UserManagementViewModel : ViewModel() {
         viewModelScope.launch {
             val auth = SessionManager.authorizationHeader() ?: return@launch
             try {
-                ApiClient.toggleLockUser(auth, user.id)
+                if (user.status == "LOCKED" || user.status == "INACTIVE") {
+                    ApiClient.unlockUser(auth, user.id)
+                } else {
+                    ApiClient.lockUser(auth, user.id)
+                }
                 loadUsers()
             } catch (_: Exception) {}
         }
@@ -85,40 +87,10 @@ class AdminAuditLogViewModel : ViewModel() {
     }
 }
 
-class RolePermissionViewModel : ViewModel() {
-
-    private val _rbacState = MutableStateFlow<UiState<RbacMatrixResponse>>(UiState.Loading)
-    val rbacState: StateFlow<UiState<RbacMatrixResponse>> = _rbacState.asStateFlow()
-
-    fun loadRbac() {
-        viewModelScope.launch {
-            _rbacState.value = UiState.Loading
-            val auth = SessionManager.authorizationHeader()
-            if (auth == null) {
-                _rbacState.value = UiState.Error("Vui lòng đăng nhập lại.")
-                return@launch
-            }
-            try {
-                val rbac = ApiClient.getRbacMatrix(auth).data
-                if (rbac != null) {
-                    _rbacState.value = UiState.Success(rbac)
-                } else {
-                    _rbacState.value = UiState.Error("Chưa có dữ liệu phân quyền.")
-                }
-            } catch (e: Exception) {
-                _rbacState.value = UiState.Error("Không tải được bảng phân quyền.")
-            }
-        }
-    }
-}
-
 class AdminGroupViewModel : ViewModel() {
 
     private val _groupsState = MutableStateFlow<UiState<List<StudentGroupResponse>>>(UiState.Loading)
     val groupsState: StateFlow<UiState<List<StudentGroupResponse>>> = _groupsState.asStateFlow()
-
-    private val _groupDetailState = MutableStateFlow<UiState<StudentGroupDetailResponse>>(UiState.Loading)
-    val groupDetailState: StateFlow<UiState<StudentGroupDetailResponse>> = _groupDetailState.asStateFlow()
 
     fun loadGroups() {
         viewModelScope.launch {
@@ -133,27 +105,6 @@ class AdminGroupViewModel : ViewModel() {
                 _groupsState.value = UiState.Success(groups)
             } catch (e: Exception) {
                 _groupsState.value = UiState.Error("Không tải được danh sách nhóm/lớp.")
-            }
-        }
-    }
-
-    fun loadGroupDetail(groupId: Long) {
-        viewModelScope.launch {
-            _groupDetailState.value = UiState.Loading
-            val auth = SessionManager.authorizationHeader()
-            if (auth == null) {
-                _groupDetailState.value = UiState.Error("Vui lòng đăng nhập lại.")
-                return@launch
-            }
-            try {
-                val detail = ApiClient.getGroupDetail(auth, groupId).data
-                if (detail != null) {
-                    _groupDetailState.value = UiState.Success(detail)
-                } else {
-                    _groupDetailState.value = UiState.Error("Không tìm thấy chi tiết nhóm/lớp.")
-                }
-            } catch (e: Exception) {
-                _groupDetailState.value = UiState.Error("Không tải được chi tiết nhóm/lớp.")
             }
         }
     }

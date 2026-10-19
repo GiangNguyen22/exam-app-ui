@@ -11,11 +11,112 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 
 data class StudentRecentResult(
     val exam: ExamResponse,
-    val result: com.internalexam.data.network.ExamResultResponse
+    val result: com.internalexam.data.network.ExamResultDetailResponse
 )
+
+suspend fun fetchStudentExamResultDetail(
+    authorization: String,
+    exam: ExamResponse
+): StudentRecentResult? {
+    // 1. Try detailed result endpoint first
+    val detailRes = runCatching { com.internalexam.data.network.ApiClient.getResultDetail(authorization, exam.id) }.getOrNull()
+    val detailData = detailRes?.data
+    if (detailRes?.success == true && detailData != null && (detailData.submittedAt != null || detailData.score != null || detailData.status == "SUBMITTED")) {
+        return StudentRecentResult(exam, detailData)
+    }
+
+    // 2. Fallback to summary result endpoint
+    val summaryRes = runCatching { com.internalexam.data.network.ApiClient.getResult(authorization, exam.id) }.getOrNull()
+    val summaryData = summaryRes?.data
+    if (summaryRes?.success == true && summaryData != null && (summaryData.submittedAt != null || summaryData.score != null || summaryData.status == "SUBMITTED")) {
+        val convertedDetail = com.internalexam.data.network.ExamResultDetailResponse(
+            resultId = summaryData.resultId,
+            examId = summaryData.examId,
+            examTitle = exam.title,
+            score = summaryData.score,
+            status = summaryData.status,
+            submittedAt = summaryData.submittedAt,
+            totalQuestions = exam.questionCount ?: exam.totalQuestions,
+            correctCount = null,
+            wrongCount = null,
+            blankCount = null,
+            questions = null
+        )
+        return StudentRecentResult(exam, convertedDetail)
+    }
+
+    return null
+}
+
+suspend fun fetchAllStudentResults(
+    authorization: String
+): List<StudentRecentResult> {
+    val currentUser = runCatching { com.internalexam.data.network.ApiClient.getCurrentUser(authorization).data }.getOrNull()
+    val allExamsMap = runCatching {
+        com.internalexam.data.network.ApiClient.getExams(authorization).data.orEmpty().associateBy { it.id }
+    }.getOrDefault(emptyMap())
+
+    if (currentUser != null) {
+        val studentResultsRes = runCatching {
+            com.internalexam.data.network.ApiClient.viewStudentResults(authorization, currentUser.id)
+        }.getOrNull()
+
+        val studentResultsList = studentResultsRes?.data.orEmpty()
+        if (studentResultsRes?.success == true && studentResultsList.isNotEmpty()) {
+            return studentResultsList.map { resItem ->
+                val exam = allExamsMap[resItem.examId] ?: ExamResponse(
+                    id = resItem.examId,
+                    code = resItem.examCode ?: "EXAM_${resItem.examId}",
+                    title = resItem.examTitle ?: "Bài thi ${resItem.examId}",
+                    durationMinutes = 45,
+                    scorePerQuestion = "1.0",
+                    startTime = null,
+                    endTime = null,
+                    shuffleQuestions = false,
+                    shuffleAnswers = false
+                )
+
+                val detailData = runCatching {
+                    com.internalexam.data.network.ApiClient.getResultDetail(authorization, resItem.examId).data
+                }.getOrNull()
+
+                val resultDetail = detailData ?: com.internalexam.data.network.ExamResultDetailResponse(
+                    resultId = resItem.resultId,
+                    examId = resItem.examId,
+                    examTitle = resItem.examTitle ?: exam.title,
+                    score = resItem.score,
+                    status = resItem.status,
+                    submittedAt = resItem.submittedAt,
+                    totalQuestions = resItem.totalQuestions ?: exam.questionCount ?: exam.totalQuestions,
+                    correctCount = resItem.correctCount,
+                    wrongCount = resItem.wrongCount,
+                    blankCount = resItem.blankCount,
+                    questions = null
+                )
+
+                StudentRecentResult(exam, resultDetail)
+            }.sortedByDescending { it.result.submittedAt.orEmpty() }
+        }
+    }
+
+    val examsList = allExamsMap.values.toList().ifEmpty {
+        runCatching { com.internalexam.data.network.ApiClient.getExams(authorization).data.orEmpty() }.getOrDefault(emptyList())
+    }
+
+    return kotlinx.coroutines.coroutineScope {
+        examsList.map { exam ->
+            async {
+                fetchStudentExamResultDetail(authorization, exam)
+            }
+        }.awaitAll().filterNotNull()
+            .sortedByDescending { it.result.submittedAt.orEmpty() }
+    }
+}
 
 data class StudentExamMetadata(
     val questionCount: Int?,
@@ -78,23 +179,32 @@ fun String?.parseBackendTimeMillis(): Long? {
         "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
         "yyyy-MM-dd'T'HH:mm:ss'Z'",
         "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
         "yyyy-MM-dd'T'HH:mm:ssXXX",
+        "yyyy-MM-dd'T'HH:mm:ssZ",
         "yyyy-MM-dd'T'HH:mm:ss.SSS",
         "yyyy-MM-dd'T'HH:mm:ss",
         "yyyy-MM-dd'T'HH:mm",
         "yyyy-MM-dd HH:mm:ss",
-        "yyyy-MM-dd HH:mm"
+        "yyyy-MM-dd HH:mm",
+        "yyyy-MM-dd",
+        "dd/MM/yyyy HH:mm:ss",
+        "dd/MM/yyyy HH:mm",
+        "dd/MM/yyyy"
     )
-    return patterns.firstNotNullOfOrNull { pattern ->
+    val normalizedRaw = raw.replace("Z", "+00:00")
+
+    for (pattern in patterns) {
         runCatching {
-            SimpleDateFormat(pattern, Locale.US).apply {
-                isLenient = false
-                if (pattern.endsWith("'Z'")) {
-                    timeZone = TimeZone.getTimeZone("UTC")
-                }
-            }.parse(raw)?.time
-        }.getOrNull()
+            val sdf = SimpleDateFormat(pattern, Locale.US)
+            if (pattern.contains("'Z'")) {
+                sdf.timeZone = TimeZone.getTimeZone("UTC")
+            }
+            val date = sdf.parse(raw) ?: sdf.parse(normalizedRaw)
+            if (date != null) return date.time
+        }
     }
+    return null
 }
 
 fun formatTimeLeft(seconds: Int): String {
@@ -111,9 +221,35 @@ fun savedStatusText(savedAt: Long?): String {
 }
 
 fun ExamResponse.occursOnDate(year: Int, month: Int, day: Int): Boolean {
-    val startMillis = startTime.parseBackendTimeMillis() ?: return false
-    val endMillis = endTime.parseBackendTimeMillis() ?: startMillis
+    val rawStart = startTime?.trim()
+    if (rawStart.isNullOrBlank()) return false
 
+    // 1. Direct raw date string match (e.g. "2026-10-15")
+    val targetDateStr = "%04d-%02d-%02d".format(year, month + 1, day)
+    if (rawStart.startsWith(targetDateStr)) return true
+
+    // 2. Parsed timestamp match
+    val startMillis = startTime.parseBackendTimeMillis() ?: return false
+    val durationMs = (durationMinutes ?: 45) * 60 * 1000L
+    val endMillis = endTime.parseBackendTimeMillis() ?: (startMillis + durationMs)
+
+    // Check same local start day
+    val examCalLocal = Calendar.getInstance().apply { timeInMillis = startMillis }
+    if (examCalLocal.get(Calendar.YEAR) == year &&
+        examCalLocal.get(Calendar.MONTH) == month &&
+        examCalLocal.get(Calendar.DAY_OF_MONTH) == day) {
+        return true
+    }
+
+    // Check same UTC start day
+    val examCalUtc = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = startMillis }
+    if (examCalUtc.get(Calendar.YEAR) == year &&
+        examCalUtc.get(Calendar.MONTH) == month &&
+        examCalUtc.get(Calendar.DAY_OF_MONTH) == day) {
+        return true
+    }
+
+    // Check overlapping date range
     val calStart = Calendar.getInstance().apply {
         set(Calendar.YEAR, year)
         set(Calendar.MONTH, month)

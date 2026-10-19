@@ -56,6 +56,73 @@ class TeacherExamViewModel : ViewModel() {
             }
         }
     }
+
+    fun createExam(request: com.internalexam.data.network.ExamCreateRequest, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            val auth = SessionManager.authorizationHeader()
+            if (auth == null) {
+                onComplete(false, "Vui lòng đăng nhập lại.")
+                return@launch
+            }
+            try {
+                val res = ApiClient.createExam(auth, request)
+                if (res.success && res.data != null) {
+                    loadExams()
+                    onComplete(true, null)
+                } else {
+                    onComplete(false, res.message.ifBlank { "Tạo đề thi thất bại." })
+                }
+            } catch (e: Exception) {
+                onComplete(false, "Có lỗi xảy ra: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun updateExam(
+        examId: Long,
+        request: com.internalexam.data.network.ExamUpdateRequest,
+        onComplete: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val auth = SessionManager.authorizationHeader()
+            if (auth == null) {
+                onComplete(false, "Vui lòng đăng nhập lại.")
+                return@launch
+            }
+            try {
+                val res = ApiClient.updateExam(auth, examId, request)
+                if (res.success && res.data != null) {
+                    loadExams()
+                    onComplete(true, null)
+                } else                {
+                    onComplete(false, res.message.ifBlank { "Cập nhật đề thi thất bại." })
+                }
+            } catch (e: Exception) {
+                onComplete(false, "Lỗi kết nối: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun deleteExam(examId: Long, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            val auth = SessionManager.authorizationHeader()
+            if (auth == null) {
+                onComplete(false, "Vui lòng đăng nhập lại.")
+                return@launch
+            }
+            try {
+                val res = ApiClient.deleteExam(auth, examId)
+                if (res.success) {
+                    loadExams()
+                    onComplete(true, null)
+                } else {
+                    onComplete(false, res.message.ifBlank { "Xóa đề thi thất bại." })
+                }
+            } catch (e: Exception) {
+                onComplete(false, "Lỗi kết nối: ${e.localizedMessage}")
+            }
+        }
+    }
 }
 
 class QuestionBankViewModel : ViewModel() {
@@ -103,6 +170,85 @@ class QuestionBankViewModel : ViewModel() {
             }
         }
     }
+
+    fun createQuestion(
+        request: com.internalexam.data.network.QuestionCreateRequest,
+        examId: Long? = null,
+        onComplete: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val auth = SessionManager.authorizationHeader()
+            if (auth == null) {
+                onComplete(false, "Vui lòng đăng nhập lại.")
+                return@launch
+            }
+            try {
+                if (examId != null && examId > 0) {
+                    val examReq = com.internalexam.data.network.ExamQuestionCreateRequest(
+                        subjectId = request.subjectId,
+                        topicId = request.topicId,
+                        content = request.content,
+                        type = request.type,
+                        difficulty = request.difficulty,
+                        imageUrl = request.imageUrl,
+                        orderIndex = null,
+                        score = null,
+                        answers = request.answers
+                    )
+                    val res = ApiClient.createQuestionForExam(auth, examId, examReq)
+                    if (res.success) {
+                        onComplete(true, null)
+                    } else {
+                        onComplete(false, res.message.ifBlank { "Thêm câu hỏi cho đề thi thất bại." })
+                    }
+                } else {
+                    val res = ApiClient.createQuestion(auth, request)
+                    if (res.success) {
+                        loadQuestions()
+                        onComplete(true, null)
+                    } else {
+                        onComplete(false, res.message.ifBlank { "Tạo câu hỏi thất bại." })
+                    }
+                }
+            } catch (e: Exception) {
+                onComplete(false, "Lỗi kết nối: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun createSubject(name: String, onComplete: (SubjectResponse?) -> Unit) {
+        viewModelScope.launch {
+            val auth = SessionManager.authorizationHeader() ?: return@launch
+            try {
+                val res = ApiClient.createSubject(auth, com.internalexam.data.network.SubjectCreateRequest(name))
+                if (res.success && res.data != null) {
+                    loadSubjects()
+                    onComplete(res.data)
+                } else {
+                    onComplete(null)
+                }
+            } catch (e: Exception) {
+                onComplete(null)
+            }
+        }
+    }
+
+    fun createTopic(subjectId: Long, name: String, onComplete: (TopicResponse?) -> Unit) {
+        viewModelScope.launch {
+            val auth = SessionManager.authorizationHeader() ?: return@launch
+            try {
+                val res = ApiClient.createTopic(auth, subjectId, com.internalexam.data.network.TopicCreateRequest(name))
+                if (res.success && res.data != null) {
+                    loadTopicsForSubject(subjectId)
+                    onComplete(res.data)
+                } else {
+                    onComplete(null)
+                }
+            } catch (e: Exception) {
+                onComplete(null)
+            }
+        }
+    }
 }
 
 class LiveMonitoringViewModel : ViewModel() {
@@ -124,7 +270,7 @@ class LiveMonitoringViewModel : ViewModel() {
                 runCatching {
                     val events = ApiClient.getProctoringEvents(auth, examId).data.orEmpty()
                     val summary = ApiClient.getProctoringSummary(auth, examId).data
-                    _eventsState.value = events.sortedByDescending { it.timestamp }
+                    _eventsState.value = events.sortedByDescending { it.createdAt.orEmpty() }
                     _summaryState.value = summary
                 }
                 delay(3000L)

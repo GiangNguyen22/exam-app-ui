@@ -1,7 +1,7 @@
 package com.internalexam.ui.teacher
 
 import androidx.compose.ui.graphics.Color
-import com.internalexam.data.questionimport.QuestionType
+import com.internalexam.model.mock.QuestionType
 import com.internalexam.ui.theme.AppAmber
 import com.internalexam.ui.theme.AppBlue
 import com.internalexam.ui.theme.AppMint
@@ -27,6 +27,7 @@ fun questionTypeLabel(type: QuestionType): String {
     return when (type) {
         QuestionType.SINGLE -> "Trắc nghiệm 1 đáp án"
         QuestionType.MULTI -> "Trắc nghiệm nhiều đáp án"
+        QuestionType.TRUE_FALSE -> "Đúng / Sai"
         QuestionType.FILL_BLANK -> "Điền từ"
     }
 }

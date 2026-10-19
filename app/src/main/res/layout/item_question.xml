@@ -108,7 +108,7 @@
                 android:layout_marginTop="4dp"
                 android:textColor="#20213D"
                 android:textSize="13sp"
-                tools:text="y' = 3x^2 - 3 = 0 <=> x = +-1. Phương trình y' = 0 có 2 nghiệm phân biệt đổi dấu nên có 2 điểm cực trị." />
+                tools:text="y' = 3x^2 - 3 = 0. Phương trình y' = 0 có 2 nghiệm phân biệt đổi dấu nên có 2 điểm cực trị." />
         </LinearLayout>
 
     </LinearLayout>

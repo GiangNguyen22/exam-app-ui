@@ -65,9 +65,9 @@ fun AuditLogCard(item: AuditLogResponse) {
             }
             Spacer(Modifier.height(6.dp))
             Text("Thực hiện bởi: ${item.username ?: "Hệ thống"}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
-            item.details?.let {
+            item.reason?.let {
                 Spacer(Modifier.height(4.dp))
-                Text("Chi tiết: $it", color = AppMuted, style = MaterialTheme.typography.bodySmall)
+                Text("Lý do: $it", color = AppMuted, style = MaterialTheme.typography.bodySmall)
             }
         }
     }

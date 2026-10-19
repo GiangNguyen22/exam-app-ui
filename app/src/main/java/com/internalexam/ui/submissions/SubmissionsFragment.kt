@@ -70,6 +70,7 @@ class SubmissionsFragment : Fragment() {
     private fun setupToolbar() {
         binding.toolbar.apply {
             subtitle = if (examTitle.isNotBlank()) examTitle else "Chi tiết bài nộp"
+            inflateMenu(R.menu.menu_submissions)
             setNavigationOnClickListener {
                 activity?.onBackPressedDispatcher?.onBackPressed()
             }

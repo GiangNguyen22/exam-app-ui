@@ -79,18 +79,9 @@ class StudentHomeViewModel : ViewModel() {
                         }
                     }
 
-                    val resultsDeferred = loadedExams.map { exam ->
-                        async {
-                            runCatching {
-                                ApiClient.getResult(authorization, exam.id).data?.let { result ->
-                                    StudentRecentResult(exam, result)
-                                }
-                            }.getOrNull()
-                        }
-                    }
+                    val recentResultsList = fetchAllStudentResults(authorization)
 
-                    metadataDeferred.awaitAll().toMap() to resultsDeferred.awaitAll().filterNotNull()
-                        .sortedByDescending { it.result.submittedAt.orEmpty() }
+                    metadataDeferred.awaitAll().toMap() to recentResultsList
                 }
 
                 val submittedIds = recentResults.filter { it.result.status == "SUBMITTED" }.map { it.exam.id }.toSet()

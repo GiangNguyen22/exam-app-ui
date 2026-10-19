@@ -210,29 +210,71 @@ fun StudentResultCard(item: StudentRecentResult, onClick: () -> Unit) {
             .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
             .clickable { onClick() }
     ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(48.dp)
-                    .background(scoreColor.copy(alpha = 0.12f), CircleShape)
-                    .border(2.dp, scoreColor.copy(alpha = 0.3f), CircleShape),
-                contentAlignment = Alignment.Center
+        Column(Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    item.result.score?.takeIf { it.isNotBlank() } ?: "--",
-                    fontWeight = FontWeight.Bold,
-                    color = scoreColor,
-                    fontSize = 15.sp
-                )
+                Box(
+                    Modifier
+                        .size(48.dp)
+                        .background(scoreColor.copy(alpha = 0.12f), CircleShape)
+                        .border(2.dp, scoreColor.copy(alpha = 0.3f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        item.result.score?.takeIf { it.isNotBlank() } ?: "--",
+                        fontWeight = FontWeight.Bold,
+                        color = scoreColor,
+                        fontSize = 15.sp
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(item.exam.title, fontWeight = FontWeight.Bold, color = AppText, style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "Nộp lúc: ${resultDate(item.result.submittedAt)}",
+                        color = AppMuted,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                ChipText(resultStatusLabel(item.result.status), scoreColor)
             }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(item.exam.title, fontWeight = FontWeight.SemiBold, color = AppText)
-                Text(resultStatusLabel(item.result.status), color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+
+            val total = item.result.totalQuestions ?: item.exam.questionCount ?: item.exam.totalQuestions
+            val correct = item.result.correctCount
+            val wrong = item.result.wrongCount
+
+            if (total != null || correct != null || wrong != null) {
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider(color = AppCardBorder)
+                Spacer(Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        total?.let {
+                            Text("Tổng: $it câu", style = MaterialTheme.typography.bodySmall, color = AppMuted)
+                        }
+                        correct?.let {
+                            Text("Đúng: $it", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = AppMint)
+                        }
+                        wrong?.let {
+                            Text("Sai: $it", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = AppRed)
+                        }
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Xem chi tiết", style = MaterialTheme.typography.labelSmall, color = AppIndigo, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(2.dp))
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppIndigo, modifier = Modifier.size(16.dp))
+                    }
+                }
             }
-            Text(resultDate(item.result.submittedAt), color = AppMuted, style = MaterialTheme.typography.labelMedium)
-            Spacer(Modifier.width(6.dp))
-            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppMuted, modifier = Modifier.size(20.dp))
         }
     }
 }

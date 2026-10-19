@@ -433,8 +433,8 @@ fun ReportResultRow(item: ExamReportItemResponse) {
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(item.studentName, fontWeight = FontWeight.SemiBold, color = AppText)
-                Text("Mã HS: ${item.studentUsername}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                Text(item.studentName ?: "Học sinh", fontWeight = FontWeight.SemiBold, color = AppText)
+                Text("Mã HS: ${item.username ?: item.studentCode ?: "--"}", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
             }
             Text(reportDate(item.submittedAt), color = AppMuted, style = MaterialTheme.typography.labelMedium)
         }

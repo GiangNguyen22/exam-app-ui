@@ -72,6 +72,11 @@ interface AuthApi {
         @Header("Authorization") authorization: String
     ): ApiResponse<List<ExamResponse>>
 
+    @GET("api/exams/scheduled")
+    suspend fun getScheduledExams(
+        @Header("Authorization") authorization: String
+    ): ApiResponse<List<ExamResponse>>
+
     @GET("api/questions")
     suspend fun getQuestions(
         @Header("Authorization") authorization: String
@@ -119,6 +124,12 @@ interface AuthApi {
         @Header("Authorization") authorization: String,
         @Path("examId") examId: Long
     ): ApiResponse<ExamResultResponse>
+
+    @GET("api/results/students/{studentId}")
+    suspend fun viewStudentResults(
+        @Header("Authorization") authorization: String,
+        @Path("studentId") studentId: Long
+    ): ApiResponse<List<StudentExamResultResponse>>
 
     @GET("api/results/{examId}/detail")
     suspend fun getResultDetail(

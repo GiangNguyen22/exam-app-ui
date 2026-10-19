@@ -67,7 +67,7 @@ class QuestionAdapter : ListAdapter<SubmissionQuestionItem, QuestionAdapter.Ques
                 }
 
                 // Explanation
-                if (!question.explanation.isNullOrBlank() && (!answer.isCorrect || true)) {
+                if (!question.explanation.isNullOrBlank()) {
                     layoutExplanation.visibility = View.VISIBLE
                     tvExplanation.text = question.explanation
                 } else {

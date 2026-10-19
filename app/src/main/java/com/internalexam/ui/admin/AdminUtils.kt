@@ -21,10 +21,10 @@ fun Role.label(): String {
 }
 
 fun RoleResponse.displayRoleName(): String {
-    return when (code) {
-        "ROLE_ADMIN" -> "Quản trị viên"
-        "ROLE_TEACHER" -> "Giáo viên"
-        "ROLE_STUDENT" -> "Học sinh"
+    return when (name) {
+        "ROLE_ADMIN", "ADMIN" -> "Quản trị viên"
+        "ROLE_TEACHER", "TEACHER" -> "Giáo viên"
+        "ROLE_STUDENT", "STUDENT" -> "Học sinh"
         else -> name
     }
 }
@@ -49,14 +49,11 @@ fun UserProfileResponse.displayName(): String {
 }
 
 fun UserProfileResponse.identityCode(): String {
-    val roleStr = roles.joinToString()
-    return if (roleStr.contains("TEACHER")) teacherCode.orEmpty()
-    else if (roleStr.contains("STUDENT")) studentCode.orEmpty()
-    else ""
+    return studentId.orEmpty().ifBlank { employeeCode.orEmpty() }
 }
 
 fun UserProfileResponse.statusLabel(): String {
-    return if (locked) "Đã khóa" else "Đang hoạt động"
+    return if (status == "LOCKED" || status == "INACTIVE") "Đã khóa" else "Đang hoạt động"
 }
 
 fun formatAuditTime(value: String?): String {
@@ -73,5 +70,5 @@ fun String.blankToNull(): String? {
 }
 
 fun StudentGroupResponse.displayInfo(): String {
-    return "$name - ${code ?: "NoCode"} (${studentCount ?: 0} HS)"
+    return "$name (${memberCount ?: 0} HS)"
 }

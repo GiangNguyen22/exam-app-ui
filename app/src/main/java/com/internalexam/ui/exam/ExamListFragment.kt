@@ -11,7 +11,7 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.navigation.fragment.findNavController
+import androidx.navigation.Navigation
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
 import com.internalexam.databinding.FragmentExamListBinding
@@ -145,14 +145,11 @@ class ExamListFragment : Fragment() {
             "examTitle" to exam.title
         )
         try {
-            // SafeArgs navigation with generated Direction or destination Bundle
-            findNavController().navigate(
-                // Example: ExamListFragmentDirections.actionExamListFragmentToExamDetailFragment(exam.examId, exam.title)
-                // Using bundle navigation for compatibility:
-                com.internalexam.R.id.toolbar, // fallback or safeArgs destination id if configured
+            Navigation.findNavController(binding.root).navigate(
+                com.internalexam.R.id.toolbar,
                 bundle
             )
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             Toast.makeText(
                 requireContext(),
                 "Chọn bài thi: ${exam.title} (ID: ${exam.examId})",

@@ -8,8 +8,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -40,10 +38,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,16 +52,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.internalexam.data.SessionManager
-import com.internalexam.data.auth.toAppRole
-import com.internalexam.data.network.ApiClient
-import com.internalexam.data.network.LoginRequest
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.internalexam.model.mock.Role
-import com.internalexam.ui.theme.AppCardBorder
-import com.internalexam.ui.theme.AppIndigo
 import com.internalexam.ui.theme.AppMuted
 import com.internalexam.ui.theme.AppRed
 import com.internalexam.ui.theme.AppSurface
@@ -71,25 +63,18 @@ import com.internalexam.ui.theme.ButtonGradient
 import com.internalexam.ui.theme.HeroGradient
 import com.internalexam.ui.theme.SplashGradient
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import retrofit2.HttpException
 
 @Composable
-fun SplashScreen(onContinue: () -> Unit) {
+fun SplashScreen(
+    viewModel: AuthViewModel = viewModel(),
+    onContinue: () -> Unit
+) {
     var visible by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         visible = true
         delay(2200)
-        val authorization = SessionManager.authorizationHeader()
-        if (authorization != null && SessionManager.hasActiveSession()) {
-            runCatching { ApiClient.getCurrentUser(authorization) }
-                .onFailure { exception ->
-                    if (exception is HttpException && exception.code() in listOf(401, 403)) {
-                        SessionManager.clear()
-                    }
-                }
-        }
-        onContinue()
+        viewModel.checkActiveSession(onContinue)
     }
 
     val logoScale by animateFloatAsState(
@@ -116,7 +101,6 @@ fun SplashScreen(onContinue: () -> Unit) {
             .background(SplashGradient),
         contentAlignment = Alignment.Center
     ) {
-        // Decorative circles
         Box(
             Modifier
                 .size(300.dp)
@@ -178,46 +162,14 @@ fun SplashScreen(onContinue: () -> Unit) {
 }
 
 @Composable
-fun LoginScreen(onLogin: (Role) -> Unit) {
+fun LoginScreen(
+    viewModel: AuthViewModel = viewModel(),
+    onLogin: (Role) -> Unit
+) {
+    val state by viewModel.uiState.collectAsState()
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var isLoading by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-
-    fun login() {
-        if (username.isBlank() || password.isBlank()) {
-            error = "Please enter your username and password"
-            return
-        }
-        scope.launch {
-            isLoading = true
-            error = null
-            try {
-                val response = ApiClient.login(LoginRequest(username.trim(), password))
-                val token = response.data?.accessToken
-                val role = response.data?.roles.toAppRole()
-                if (response.success && !token.isNullOrBlank() && role != null) {
-                    SessionManager.saveSession(token, role)
-                    onLogin(role)
-                } else if (response.success && !token.isNullOrBlank()) {
-                    error = "Your account has no app role assigned"
-                } else {
-                    error = response.message.ifBlank { "Sign in failed" }
-                }
-            } catch (exception: HttpException) {
-                error = when (exception.code()) {
-                    401, 403 -> "Invalid username or password"
-                    else -> "Sign in failed. Please try again."
-                }
-            } catch (exception: Exception) {
-                error = "Cannot sign in right now. Please try again later."
-            } finally {
-                isLoading = false
-            }
-        }
-    }
 
     Box(
         Modifier
@@ -251,7 +203,7 @@ fun LoginScreen(onLogin: (Role) -> Unit) {
                     )
                 }
                 Spacer(Modifier.height(16.dp))
-                Text("Welcome back", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyLarge)
+                Text("Chào mừng trở lại", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyLarge)
                 Text("Internal Exam", color = Color.White, style = MaterialTheme.typography.headlineLarge)
             }
         }
@@ -266,75 +218,90 @@ fun LoginScreen(onLogin: (Role) -> Unit) {
                 .offset(y = 200.dp)
         ) {
             Column(Modifier.padding(24.dp)) {
-                Text("Sign In", style = MaterialTheme.typography.titleLarge)
+                Text("Đăng nhập", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(4.dp))
-                Text("Enter your credentials to continue", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                Text("Nhập tài khoản để tiếp tục", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(20.dp))
 
                 OutlinedTextField(
                     value = username,
-                    onValueChange = { username = it; error = null },
+                    onValueChange = {
+                        username = it
+                        viewModel.clearError()
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Username / Student ID") },
+                    label = { Text("Tên đăng nhập / Mã học sinh") },
                     singleLine = true,
-                    enabled = !isLoading,
+                    enabled = !state.isLoading,
                     shape = MaterialTheme.shapes.medium
                 )
                 Spacer(Modifier.height(14.dp))
                 OutlinedTextField(
                     value = password,
-                    onValueChange = { password = it; error = null },
+                    onValueChange = {
+                        password = it
+                        viewModel.clearError()
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Password") },
+                    label = { Text("Mật khẩu") },
                     singleLine = true,
-                    enabled = !isLoading,
+                    enabled = !state.isLoading,
                     shape = MaterialTheme.shapes.medium,
                     visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = {
                         IconButton(onClick = { showPassword = !showPassword }) {
                             Icon(
                                 if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = "Toggle password"
+                                contentDescription = "Ẩn/hiện mật khẩu"
                             )
                         }
                     }
                 )
 
-                if (error != null) {
+                if (state.errorMessage != null) {
                     Spacer(Modifier.height(10.dp))
                     Surface(color = AppRed.copy(alpha = 0.08f), shape = MaterialTheme.shapes.small) {
-                        Text(error.orEmpty(), color = AppRed, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            state.errorMessage.orEmpty(),
+                            color = AppRed,
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                 }
                 Spacer(Modifier.height(20.dp))
 
                 Button(
-                    onClick = { if (!isLoading) login() },
+                    onClick = {
+                        if (!state.isLoading) {
+                            viewModel.login(username, password, onLogin)
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp),
                     shape = MaterialTheme.shapes.medium,
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color.White),
                     contentPadding = PaddingValues(),
-                    enabled = !isLoading
+                    enabled = !state.isLoading
                 ) {
                     Box(
                         Modifier
                             .fillMaxSize()
                             .background(
-                                if (isLoading) Brush.horizontalGradient(listOf(AppMuted, AppMuted)) else ButtonGradient,
+                                if (state.isLoading) Brush.horizontalGradient(listOf(AppMuted, AppMuted)) else ButtonGradient,
                                 MaterialTheme.shapes.medium
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (isLoading) {
+                        if (state.isLoading) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(10.dp))
-                                Text("Signing in...", fontWeight = FontWeight.Bold)
+                                Text("Đang đăng nhập...", fontWeight = FontWeight.Bold)
                             }
                         } else {
-                            Text("Sign In", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text("Đăng nhập", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         }
                     }
                 }
