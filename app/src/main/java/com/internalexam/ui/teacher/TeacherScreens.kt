@@ -35,7 +35,9 @@ import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import java.util.Calendar
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.Button
@@ -154,6 +156,8 @@ fun TeacherExamListScreen(
     var selectedTabPosition by remember { mutableIntStateOf(1) } // Default to Tab 1: "Lịch thi"
     var examToDelete by remember { mutableStateOf<ExamResponse?>(null) }
     var isDeleting by remember { mutableStateOf(false) }
+    var examForBankSelection by remember { mutableStateOf<ExamResponse?>(null) }
+    var examForAddOption by remember { mutableStateOf<ExamResponse?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.loadExams()
@@ -276,7 +280,7 @@ fun TeacherExamListScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         OutlinedButton(onClick = { onViewQuestions(exam) }) { Text("Câu hỏi") }
-                                        OutlinedButton(onClick = { onAddQuestion(exam) }) { Text("+ Câu hỏi") }
+                                        OutlinedButton(onClick = { examForAddOption = exam }) { Text("+ Câu hỏi") }
                                         Button(onClick = { onEditExam(exam) }, colors = ButtonDefaults.buttonColors(containerColor = AppIndigo)) { Text("Sửa") }
                                         OutlinedButton(
                                             onClick = { examToDelete = exam },
@@ -293,6 +297,60 @@ fun TeacherExamListScreen(
                 }
             }
         }
+    }
+
+    examForAddOption?.let { exam ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { examForAddOption = null },
+            title = { Text("Thêm câu hỏi vào đề thi", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Đề thi: ${exam.title}", style = MaterialTheme.typography.bodySmall, color = AppMuted)
+                    Text("Vui lòng chọn phương thức thêm câu hỏi:")
+                    Spacer(Modifier.height(4.dp))
+                    OutlinedButton(
+                        onClick = {
+                            val selected = examForAddOption
+                            examForAddOption = null
+                            if (selected != null) examForBankSelection = selected
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Text("Chọn từ kho câu hỏi", color = AppIndigo, fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = {
+                            val selected = examForAddOption
+                            examForAddOption = null
+                            if (selected != null) onAddQuestion(selected)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = ButtonDefaults.buttonColors(containerColor = AppIndigo)
+                    ) {
+                        Text("Tạo câu hỏi mới")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { examForAddOption = null }) {
+                    Text("Đóng")
+                }
+            }
+        )
+    }
+
+    examForBankSelection?.let { exam ->
+        SelectBankQuestionsDialog(
+            exam = exam,
+            onDismiss = { examForBankSelection = null },
+            onAdded = {
+                examForBankSelection = null
+                viewModel.loadExams()
+            }
+        )
     }
 
     examToDelete?.let { exam ->
@@ -502,6 +560,25 @@ fun ExamQuestionListScreen(
     var questions by remember { mutableStateOf<List<ExamQuestionResponse>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showSelectBankDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    fun reloadQuestions() {
+        val auth = SessionManager.authorizationHeader() ?: return
+        if (exam == null) return
+        isLoading = true
+        scope.launch {
+            try {
+                val res = ApiClient.getExamQuestions(auth, exam.id)
+                questions = res.data.orEmpty()
+                errorMessage = null
+            } catch (e: Exception) {
+                errorMessage = "Không thể tải danh sách câu hỏi của đề thi"
+            } finally {
+                isLoading = false
+            }
+        }
+    }
 
     LaunchedEffect(exam?.id) {
         val auth = SessionManager.authorizationHeader()
@@ -531,16 +608,35 @@ fun ExamQuestionListScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             ChipText("${questions.size} câu hỏi", AppIndigo)
-            Button(
-                onClick = onAddQuestion,
-                colors = ButtonDefaults.buttonColors(containerColor = AppIndigo)
-            ) {
-                Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Thêm câu hỏi")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { showSelectBankDialog = true },
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text("Từ kho câu hỏi", color = AppIndigo, fontWeight = FontWeight.SemiBold)
+                }
+                Button(
+                    onClick = onAddQuestion,
+                    colors = ButtonDefaults.buttonColors(containerColor = AppIndigo)
+                ) {
+                    Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Tạo mới")
+                }
             }
         }
         Spacer(Modifier.height(12.dp))
+
+        if (showSelectBankDialog && exam != null) {
+            SelectBankQuestionsDialog(
+                exam = exam,
+                onDismiss = { showSelectBankDialog = false },
+                onAdded = {
+                    showSelectBankDialog = false
+                    reloadQuestions()
+                }
+            )
+        }
 
         if (isLoading) {
             LoadingStateCard("Đang tải danh sách câu hỏi đề thi...")

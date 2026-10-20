@@ -3,6 +3,7 @@ package com.internalexam.ui.student
 import androidx.compose.ui.graphics.Color
 import com.internalexam.data.network.ExamResponse
 import com.internalexam.ui.theme.AppAmber
+import com.internalexam.ui.theme.AppIndigo
 import com.internalexam.ui.theme.AppMint
 import com.internalexam.ui.theme.AppMuted
 import com.internalexam.ui.theme.AppRed
@@ -53,13 +54,17 @@ suspend fun fetchStudentExamResultDetail(
     return null
 }
 
+suspend fun fetchStudentExams(authorization: String): List<ExamResponse> {
+    val scheduledExams = runCatching { com.internalexam.data.network.ApiClient.getScheduledExams(authorization).data.orEmpty() }.getOrDefault(emptyList())
+    val generalExams = runCatching { com.internalexam.data.network.ApiClient.getExams(authorization).data.orEmpty() }.getOrDefault(emptyList())
+    return (scheduledExams + generalExams).distinctBy { it.id }
+}
+
 suspend fun fetchAllStudentResults(
     authorization: String
 ): List<StudentRecentResult> {
     val currentUser = runCatching { com.internalexam.data.network.ApiClient.getCurrentUser(authorization).data }.getOrNull()
-    val allExamsMap = runCatching {
-        com.internalexam.data.network.ApiClient.getExams(authorization).data.orEmpty().associateBy { it.id }
-    }.getOrDefault(emptyMap())
+    val allExamsMap = fetchStudentExams(authorization).associateBy { it.id }
 
     if (currentUser != null) {
         val studentResultsRes = runCatching {
@@ -139,6 +144,44 @@ fun StudentExamMetadata?.subjectLabel(exam: ExamResponse): String {
         ?: "Chưa rõ môn"
 }
 
+enum class AttemptStatus(val rawValue: String, val label: String) {
+    DOING("DOING", "Đang làm bài"),
+    SUBMITTED("SUBMITTED", "Đã nộp bài"),
+    CANCELLED("CANCELLED", "Đã hủy");
+
+    companion object {
+        fun from(value: String?): AttemptStatus {
+            return entries.find { it.rawValue.equals(value, ignoreCase = true) } ?: DOING
+        }
+    }
+}
+
+enum class StudentExamStatus(
+    val label: String,
+    val color: Color
+) {
+    NOT_STARTED("Sắp diễn ra", AppIndigo),
+    IN_PROGRESS("Đang diễn ra", AppMint),
+    SUBMITTED("Đã nộp bài", AppMint),
+    CANCELLED("Đã hủy", AppRed),
+    EXPIRED("Đã kết thúc", AppMuted);
+
+    companion object {
+        fun compute(
+            exam: ExamResponse,
+            isSubmitted: Boolean = false,
+            isCancelled: Boolean = false,
+            now: Long = System.currentTimeMillis()
+        ): StudentExamStatus {
+            if (isSubmitted) return SUBMITTED
+            if (isCancelled) return CANCELLED
+            if (exam.isExpired(now)) return EXPIRED
+            if (exam.isOpenNow(now)) return IN_PROGRESS
+            return NOT_STARTED
+        }
+    }
+}
+
 fun scoreColor(score: String?): Color {
     val numericScore = score?.replace(",", ".")?.toFloatOrNull()
     return when {
@@ -149,12 +192,12 @@ fun scoreColor(score: String?): Color {
     }
 }
 
-fun resultStatusLabel(status: String): String {
+fun resultStatusLabel(status: String?): String {
     return when (status) {
-        "SUBMITTED" -> "Đã nộp bài"
-        "DOING" -> "Đang làm bài"
-        "CANCELLED" -> "Đã hủy"
-        else -> status
+        AttemptStatus.SUBMITTED.rawValue -> AttemptStatus.SUBMITTED.label
+        AttemptStatus.DOING.rawValue -> AttemptStatus.DOING.label
+        AttemptStatus.CANCELLED.rawValue -> AttemptStatus.CANCELLED.label
+        else -> status ?: "--"
     }
 }
 

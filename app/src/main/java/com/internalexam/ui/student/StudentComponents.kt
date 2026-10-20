@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assessment
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
@@ -42,7 +43,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -136,7 +139,10 @@ fun StudentExamRoomCard(
     onEnter: () -> Unit,
     onViewResult: (() -> Unit)? = null
 ) {
-    val canEnterExam = exam.isOpenNow() && onViewResult == null
+    val isSubmitted = onViewResult != null
+    val status = StudentExamStatus.compute(exam, isSubmitted = isSubmitted)
+    val canEnterExam = status == StudentExamStatus.IN_PROGRESS
+
     Card(
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = AppSurface),
@@ -151,26 +157,30 @@ fun StudentExamRoomCard(
                     .width(5.dp)
                     .fillMaxHeight()
                     .clip(MaterialTheme.shapes.small)
-                    .background(AppIndigo)
+                    .background(status.color)
             )
             Column(
                 Modifier
                     .padding(16.dp)
                     .weight(1f)
             ) {
-                Text(exam.title, style = MaterialTheme.typography.titleLarge)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(exam.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(8.dp))
+                    ChipText(status.label, status.color)
+                }
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     ChipText(metadata.questionCountLabel(exam), AppBlue)
                     ChipText(exam.durationLabel(), AppAmber)
                     ChipText(metadata.subjectLabel(exam), AppIndigo)
                 }
-                if (!canEnterExam && onViewResult == null) {
-                    Spacer(Modifier.height(8.dp))
-                    ChipText("Chưa mở", AppAmber)
-                }
                 Spacer(Modifier.height(14.dp))
-                if (onViewResult != null) {
+                if (status == StudentExamStatus.SUBMITTED && onViewResult != null) {
                     Button(
                         onClick = onViewResult,
                         modifier = Modifier
@@ -189,9 +199,17 @@ fun StudentExamRoomCard(
                             .fillMaxWidth()
                             .height(48.dp),
                         shape = MaterialTheme.shapes.medium,
-                        colors = ButtonDefaults.buttonColors(containerColor = AppIndigo)
+                        colors = ButtonDefaults.buttonColors(containerColor = if (canEnterExam) AppIndigo else AppMuted)
                     ) {
-                        Text(if (canEnterExam) "Vào phòng thi" else "Chưa tới giờ mở")
+                        Text(
+                            when (status) {
+                                StudentExamStatus.IN_PROGRESS -> "Vào phòng thi"
+                                StudentExamStatus.NOT_STARTED -> "Chưa tới giờ mở"
+                                StudentExamStatus.EXPIRED -> "Đã hết giờ"
+                                StudentExamStatus.CANCELLED -> "Đã bị hủy"
+                                StudentExamStatus.SUBMITTED -> "Đã hoàn thành"
+                            }
+                        )
                     }
                 }
             }
@@ -311,6 +329,7 @@ fun AiExplanableQuestionCard(
     subject: String?
 ) {
     var explainState by remember { mutableStateOf<ExplainState>(ExplainState.Idle) }
+    val scope = rememberCoroutineScope()
 
     val correctAnswerText = question.answers
         ?.filter { it.correct == true }
@@ -326,6 +345,50 @@ fun AiExplanableQuestionCard(
                 ?.filter { it.id in selectedIds }
                 ?.joinToString(", ") { it.content }
                 ?: ""
+        }
+    }
+
+    fun requestAiExplain() {
+        explainState = ExplainState.Loading
+        scope.launch {
+            val authorization = SessionManager.authorizationHeader()
+            if (authorization == null) {
+                explainState = ExplainState.Error("Vui lòng đăng nhập lại.")
+                return@launch
+            }
+
+            val optionsText = question.answers
+                ?.takeIf { it.isNotEmpty() }
+                ?.joinToString("\n") { option -> "- ${option.content}" }
+
+            val fullQuestionPrompt = if (!optionsText.isNullOrBlank()) {
+                "${question.content}\n\nCác lựa chọn:\n$optionsText"
+            } else {
+                question.content
+            }
+
+            val request = com.internalexam.data.network.AiExplainRequest(
+                question = fullQuestionPrompt,
+                correctAnswer = correctAnswerText.ifBlank { null },
+                studentAnswer = studentAnswerText.ifBlank { null },
+                correct = question.correct == true,
+                subject = subject
+            )
+
+            try {
+                val response = ApiClient.explainAnswer(authorization, request)
+                if (response.success && !response.data?.explanation.isNullOrBlank()) {
+                    explainState = ExplainState.Success(response.data!!.explanation)
+                } else {
+                    val errorMsg = response.message.takeIf { it.isNotBlank() }
+                        ?: "Không thể tạo giải thích lúc này."
+                    explainState = ExplainState.Error(errorMsg)
+                }
+            } catch (e: Exception) {
+                val detail = e.localizedMessage.takeIf { !it.isNullOrBlank() }
+                    ?: "Lỗi kết nối. Vui lòng thử lại."
+                explainState = ExplainState.Error(detail)
+            }
         }
     }
 
@@ -382,30 +445,92 @@ fun AiExplanableQuestionCard(
                 modifier = Modifier.padding(top = 2.dp)
             )
 
-            if (studentAnswerText.isNotBlank()) {
-                AnswerDetailRow(
-                    label = "Bài làm",
-                    value = studentAnswerText,
-                    valueColor = if (isCorrect) AppMint else AppCoral
-                )
-            } else if (question.fillContent != null) {
-                AnswerDetailRow("Bài làm", question.fillContent.orEmpty(), if (isCorrect) AppMint else AppCoral)
+            // Render Answer Options if present
+            if (!question.answers.isNullOrEmpty()) {
+                val selectedIds = question.selectedAnswerIds.orEmpty().toSet()
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    question.answers.forEach { option ->
+                        val isSelected = option.id in selectedIds
+                        val isOptionCorrect = option.correct == true
+
+                        val optionBg = when {
+                            isSelected && isOptionCorrect -> AppMint.copy(alpha = 0.12f)
+                            isSelected && !isOptionCorrect -> AppRed.copy(alpha = 0.12f)
+                            isOptionCorrect -> AppMint.copy(alpha = 0.06f)
+                            else -> AppSurface
+                        }
+                        val optionBorderColor = when {
+                            isSelected && isOptionCorrect -> AppMint
+                            isSelected && !isOptionCorrect -> AppRed
+                            isOptionCorrect -> AppMint.copy(alpha = 0.5f)
+                            else -> AppCardBorder
+                        }
+
+                        Surface(
+                            color = optionBg,
+                            shape = MaterialTheme.shapes.small,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, optionBorderColor, MaterialTheme.shapes.small)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = option.content,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = AppText,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (isSelected) {
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = if (isOptionCorrect) "✓ (Đã chọn)" else "✗ (Đã chọn)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isOptionCorrect) AppMint else AppRed
+                                    )
+                                } else if (isOptionCorrect) {
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = "✓ (Đáp án đúng)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AppMint
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                if (studentAnswerText.isNotBlank()) {
+                    AnswerDetailRow(
+                        label = "Bài làm",
+                        value = studentAnswerText,
+                        valueColor = if (isCorrect) AppMint else AppCoral
+                    )
+                } else if (question.fillContent != null) {
+                    AnswerDetailRow("Bài làm", question.fillContent.orEmpty(), if (isCorrect) AppMint else AppCoral)
+                }
+
+                if (question.correct != true && correctAnswerText.isNotBlank()) {
+                    AnswerDetailRow(label = "Đáp án đúng", value = correctAnswerText, valueColor = AppMint)
+                }
             }
 
-            if (question.correct != true && correctAnswerText.isNotBlank()) {
-                AnswerDetailRow(label = "Đáp án đúng", value = correctAnswerText, valueColor = AppMint)
-            }
-
+            // AI Explanation Section
             when (val state = explainState) {
                 is ExplainState.Idle -> {
                     OutlinedButton(
-                        onClick = { explainState = ExplainState.Loading },
+                        onClick = { requestAiExplain() },
                         shape = MaterialTheme.shapes.medium,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.PhoneAndroid, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = AppIndigo, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Giải thích bằng AI")
+                        Text("Giải thích bằng AI", color = AppIndigo, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 is ExplainState.Loading -> {
@@ -426,7 +551,7 @@ fun AiExplanableQuestionCard(
                                 color = AppIndigo
                             )
                             Spacer(Modifier.width(12.dp))
-                            Text("Đang tạo giải thích...", color = AppIndigo, style = MaterialTheme.typography.bodyMedium)
+                            Text("Đang tạo giải thích từ AI...", color = AppIndigo, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         }
                     }
                 }
@@ -442,12 +567,12 @@ fun AiExplanableQuestionCard(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.ErrorOutline, null, tint = AppRed, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Không thể giải thích", color = AppRed, fontWeight = FontWeight.Bold)
+                                Text("Không thể tạo giải thích", color = AppRed, fontWeight = FontWeight.Bold)
                             }
                             Text(state.message, color = AppMuted, style = MaterialTheme.typography.bodySmall)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                TextButton(onClick = { explainState = ExplainState.Idle }) {
-                                    Text("Thử lại")
+                                TextButton(onClick = { requestAiExplain() }) {
+                                    Text("Thử lại", color = AppRed, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -466,10 +591,10 @@ fun AiExplanableQuestionCard(
                                 Surface(
                                     color = AppIndigo.copy(alpha = 0.14f),
                                     shape = CircleShape,
-                                    modifier = Modifier.size(30.dp)
+                                    modifier = Modifier.size(32.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Default.PhoneAndroid, null, tint = AppIndigo, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.AutoAwesome, null, tint = AppIndigo, modifier = Modifier.size(18.dp))
                                     }
                                 }
                                 Spacer(Modifier.width(10.dp))
@@ -477,45 +602,19 @@ fun AiExplanableQuestionCard(
                             }
                             HorizontalDivider(color = AppIndigo.copy(alpha = 0.15f))
                             Text(
-                                state.explanation,
+                                text = state.explanation,
                                 color = AppText,
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                 TextButton(onClick = { explainState = ExplainState.Idle }) {
-                                    Text("Ẩn", color = AppIndigo)
+                                    Text("Ẩn giải thích", color = AppIndigo)
                                 }
                             }
                         }
                     }
                 }
-            }
-        }
-    }
-
-    if (explainState is ExplainState.Loading) {
-        LaunchedEffect(question.questionId) {
-            explainState = ExplainState.Loading
-            val authorization = SessionManager.authorizationHeader()
-            if (authorization == null) {
-                explainState = ExplainState.Error("Vui lòng đăng nhập lại.")
-                return@LaunchedEffect
-            }
-            val request = com.internalexam.data.network.AiExplainRequest(
-                question = question.content,
-                correctAnswer = correctAnswerText.ifBlank { null },
-                studentAnswer = studentAnswerText.ifBlank { null },
-                correct = question.correct == true,
-                subject = subject
-            )
-            explainState = try {
-                val response = ApiClient.explainAnswer(authorization, request)
-                val text = response.data?.explanation
-                if (text != null) ExplainState.Success(text)
-                else ExplainState.Error("Không thể tạo giải thích lúc này.")
-            } catch (e: Exception) {
-                ExplainState.Error("Lỗi kết nối. Vui lòng thử lại.")
             }
         }
     }

@@ -271,7 +271,7 @@ fun StudentExamsScreen(onLobby: (ExamResponse) -> Unit, onOpenResult: (ExamRespo
             return@LaunchedEffect
         }
         try {
-            val visibleExams = ApiClient.getExams(authorization).data.orEmpty().filterNot { it.isExpired() }
+            val visibleExams = fetchStudentExams(authorization).filterNot { it.isExpired() }
             val subjectNamesById = runCatching {
                 ApiClient.getSubjects(authorization).data.orEmpty().associate { it.id to it.name }
             }.getOrDefault(emptyMap())
@@ -1077,14 +1077,7 @@ fun StudentScheduleScreen(
         }
         isLoading = true
         try {
-            val scheduledRes = runCatching { ApiClient.getScheduledExams(authorization) }.getOrNull()
-            val scheduledExams = scheduledRes?.data.orEmpty()
-
-            val generalRes = runCatching { ApiClient.getExams(authorization) }.getOrNull()
-            val generalExams = generalRes?.data.orEmpty()
-
-            // Combine both scheduled and general exams without duplicates
-            val allExams = (scheduledExams + generalExams).distinctBy { it.id }
+            val allExams = fetchStudentExams(authorization)
             exams = allExams
 
             // Auto-navigate calendar to the nearest upcoming scheduled exam date if current month has no exams
@@ -1245,6 +1238,8 @@ fun StudentScheduleScreen(
                                         val isToday = dayNum == todayDateNumber
                                         val dayExams = exams.filter { it.occursOnDate(selectedYear, selectedMonth, dayNum) }
                                         val hasExams = dayExams.isNotEmpty()
+                                        val dominantStatus = dayExams.map { StudentExamStatus.compute(it, isSubmitted = it.id in submittedExamIds) }
+                                            .minByOrNull { it.ordinal } ?: StudentExamStatus.NOT_STARTED
 
                                         val cellBg = if (isSelected) AppIndigo else AppSurface
                                         val textColor = if (isSelected) Color.White else AppText
@@ -1282,7 +1277,7 @@ fun StudentScheduleScreen(
                                                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        val dotColor = if (isSelected) Color.White else AppMint
+                                                        val dotColor = if (isSelected) Color.White else dominantStatus.color
                                                         Box(
                                                             modifier = Modifier
                                                                 .size(5.dp)
@@ -1401,8 +1396,7 @@ fun StudentScheduleScreen(
                 } else {
                     examsOnSelectedDay.forEach { exam ->
                         val isSubmitted = exam.id in submittedExamIds
-                        val isOpenNow = exam.isOpenNow()
-                        val isExpired = exam.isExpired()
+                        val examStatus = StudentExamStatus.compute(exam, isSubmitted = isSubmitted)
 
                         Card(
                             shape = MaterialTheme.shapes.large,
@@ -1422,19 +1416,7 @@ fun StudentScheduleScreen(
                                         ChipText(exam.subjectName ?: exam.subject ?: "Môn học", AppBlue)
                                         ChipText("Mã: ${exam.code}", AppIndigo)
                                     }
-                                    val statusText = when {
-                                        isSubmitted -> "Đã nộp"
-                                        isOpenNow -> "Đang diễn ra"
-                                        isExpired -> "Đã kết thúc"
-                                        else -> "Sắp diễn ra"
-                                    }
-                                    val statusColor = when {
-                                        isSubmitted -> AppMint
-                                        isOpenNow -> AppMint
-                                        isExpired -> AppMuted
-                                        else -> AppIndigo
-                                    }
-                                    ChipText(statusText, statusColor)
+                                    ChipText(examStatus.label, examStatus.color)
                                 }
 
                                 Spacer(Modifier.height(10.dp))
@@ -1482,16 +1464,27 @@ fun StudentScheduleScreen(
                                         Spacer(Modifier.width(6.dp))
                                         Text("Xem kết quả bài thi")
                                     }
-                                } else if (!isExpired) {
+                                } else if (examStatus == StudentExamStatus.IN_PROGRESS) {
                                     Button(
                                         onClick = { onLobby(exam) },
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = MaterialTheme.shapes.medium,
-                                        colors = ButtonDefaults.buttonColors(containerColor = if (isOpenNow) AppMint else AppIndigo)
+                                        colors = ButtonDefaults.buttonColors(containerColor = AppMint)
                                     ) {
                                         Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(6.dp))
-                                        Text(if (isOpenNow) "Vào phòng thi ngay" else "Chi tiết ca thi")
+                                        Text("Vào phòng thi ngay")
+                                    }
+                                } else if (examStatus == StudentExamStatus.NOT_STARTED) {
+                                    Button(
+                                        onClick = { onLobby(exam) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = MaterialTheme.shapes.medium,
+                                        colors = ButtonDefaults.buttonColors(containerColor = AppIndigo)
+                                    ) {
+                                        Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Sắp diễn ra • Chi tiết ca thi")
                                     }
                                 } else {
                                     Text(

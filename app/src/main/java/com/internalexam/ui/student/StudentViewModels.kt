@@ -43,8 +43,7 @@ class StudentHomeViewModel : ViewModel() {
             }
 
             try {
-                val response = ApiClient.getExams(authorization)
-                val loadedExams = response.data.orEmpty()
+                val loadedExams = fetchStudentExams(authorization)
                 val visibleExams = loadedExams.filterNot { it.isExpired() }
 
                 val subjectNamesById = runCatching {
