@@ -51,6 +51,10 @@ object ProctoringEventBuffer {
         examId = null
     }
 
+    fun push(type: SecurityEventType, details: String? = null) {
+        push(type.name, details ?: type.description)
+    }
+
     fun push(eventType: String, details: String?) {
         val eid = examId ?: return
         val event = ProctoringEventRequest(
