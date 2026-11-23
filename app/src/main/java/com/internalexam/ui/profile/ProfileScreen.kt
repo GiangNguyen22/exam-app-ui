@@ -18,29 +18,28 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.internalexam.data.SessionManager
-import com.internalexam.data.network.ApiClient
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.internalexam.data.network.UserProfileResponse
 import com.internalexam.ui.components.AvatarCircle
 import com.internalexam.ui.components.ChipText
 import com.internalexam.ui.components.ExamTopBar
 import com.internalexam.ui.components.InfoBanner
+import com.internalexam.ui.components.LoadingStateCard
 import com.internalexam.ui.components.PrimaryAction
+import com.internalexam.ui.components.ScreenBottomPadding
+import com.internalexam.ui.exam.UiState
+import com.internalexam.ui.theme.AppAmber
 import com.internalexam.ui.theme.AppCardBorder
 import com.internalexam.ui.theme.AppIndigo
 import com.internalexam.ui.theme.AppMuted
@@ -48,67 +47,38 @@ import com.internalexam.ui.theme.AppRed
 import com.internalexam.ui.theme.AppSurface
 
 @Composable
-fun ProfileScreen(onLogout: () -> Unit) {
-    var profile by remember { mutableStateOf<UserProfileResponse?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(true) }
+fun ProfileScreen(
+    viewModel: ProfileViewModel = viewModel(),
+    onLogout: () -> Unit
+) {
+    val state by viewModel.uiState.collectAsState()
 
-    fun loadProfile() {
-        loading = true
-        error = null
-    }
-
-    LaunchedEffect(loading) {
-        if (!loading) return@LaunchedEffect
-        val authorization = SessionManager.authorizationHeader()
-        if (authorization == null) {
-            error = "No active session"
-            loading = false
-            return@LaunchedEffect
-        }
-
-        try {
-            val response = ApiClient.getCurrentUser(authorization)
-            profile = response.data
-            if (!response.success || response.data == null) {
-                error = response.message.ifBlank { "Cannot load profile" }
-            }
-        } catch (exception: Exception) {
-            error = "Cannot connect to the backend"
-        } finally {
-            loading = false
-        }
+    LaunchedEffect(Unit) {
+        viewModel.loadProfile()
     }
 
     LazyColumn(
         modifier = Modifier.padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { ExamTopBar("Profile") }
+        item { ExamTopBar("Hồ sơ cá nhân") }
 
-        when {
-            loading -> item {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 48.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    CircularProgressIndicator()
-                    Spacer(Modifier.height(12.dp))
-                    Text("Loading profile", color = AppMuted)
-                }
+        when (val uiState = state) {
+            is UiState.Loading -> item {
+                LoadingStateCard("Đang tải thông tin cá nhân...")
             }
 
-            error != null -> item {
-                InfoBanner(error.orEmpty(), color = AppRed)
-                Spacer(Modifier.height(8.dp))
-                PrimaryAction("Try again") { loadProfile() }
+            is UiState.Error -> item {
+                InfoBanner(uiState.message, color = AppRed)
+                Spacer(Modifier.height(12.dp))
+                PrimaryAction("Thử lại") { viewModel.loadProfile() }
             }
 
-            profile != null -> item {
-                ProfileCard(profile = profile!!)
-                PrimaryAction("Sign out") { onLogout() }
+            is UiState.Success -> item {
+                ProfileCard(profile = uiState.data)
+                Spacer(Modifier.height(16.dp))
+                PrimaryAction("Đăng xuất") { onLogout() }
+                Spacer(Modifier.height(ScreenBottomPadding))
             }
         }
     }
@@ -124,7 +94,7 @@ private fun ProfileCard(profile: UserProfileResponse) {
             .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 AvatarCircle(profile.fullName.ifBlank { profile.username }, size = 58, color = AppIndigo)
                 Column(Modifier.padding(start = 14.dp).weight(1f)) {
                     Text(profile.fullName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -134,15 +104,15 @@ private fun ProfileCard(profile: UserProfileResponse) {
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 profile.roles.orEmpty().forEach { role -> ChipText(role.normalizeLabel(), AppIndigo) }
-                profile.status?.let { ChipText(it.normalizeLabel()) }
+                profile.status?.let { ChipText(it.normalizeLabel(), AppAmber) }
             }
 
-            ProfileField(Icons.Default.Person, "Username", profile.username)
-            ProfileField(Icons.Default.Badge, "Student ID", profile.studentId)
-            ProfileField(Icons.Default.Badge, "Employee code", profile.employeeCode)
+            ProfileField(Icons.Default.Person, "Tên đăng nhập", profile.username)
+            ProfileField(Icons.Default.Badge, "Mã học sinh", profile.studentId)
+            ProfileField(Icons.Default.Badge, "Mã cán bộ / giáo viên", profile.employeeCode)
             ProfileField(Icons.Default.Email, "Email", profile.email)
-            ProfileField(Icons.Default.Phone, "Phone", profile.phone)
-            ProfileField(Icons.Default.VerifiedUser, "Account status", profile.status?.normalizeLabel())
+            ProfileField(Icons.Default.Phone, "Số điện thoại", profile.phone)
+            ProfileField(Icons.Default.VerifiedUser, "Trạng thái tài khoản", profile.status?.normalizeLabel())
         }
     }
 }
@@ -151,7 +121,7 @@ private fun ProfileCard(profile: UserProfileResponse) {
 private fun ProfileField(icon: ImageVector, label: String, value: String?) {
     if (value.isNullOrBlank()) return
 
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Icon(icon, contentDescription = null, tint = AppMuted, modifier = Modifier.size(20.dp))
         Column(Modifier.padding(start = 12.dp)) {
             Text(label, color = AppMuted, style = MaterialTheme.typography.labelMedium)
@@ -161,5 +131,12 @@ private fun ProfileField(icon: ImageVector, label: String, value: String?) {
 }
 
 private fun String.normalizeLabel(): String {
-    return lowercase().replaceFirstChar { it.uppercase() }.replace('_', ' ')
+    return when (this.uppercase()) {
+        "ROLE_ADMIN", "ADMIN" -> "Quản trị viên"
+        "ROLE_TEACHER", "TEACHER" -> "Giáo viên"
+        "ROLE_STUDENT", "STUDENT" -> "Học sinh"
+        "ACTIVE" -> "Đang hoạt động"
+        "INACTIVE" -> "Đã khóa"
+        else -> lowercase().replaceFirstChar { it.uppercase() }.replace('_', ' ')
+    }
 }

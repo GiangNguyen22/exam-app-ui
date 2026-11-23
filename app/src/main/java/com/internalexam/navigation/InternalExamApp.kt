@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
@@ -51,6 +52,7 @@ import com.internalexam.ui.student.ResultScreen
 import com.internalexam.ui.student.StudentExamsScreen
 import com.internalexam.ui.student.StudentHomeScreen
 import com.internalexam.ui.student.StudentResultsScreen
+import com.internalexam.ui.student.StudentScheduleScreen
 import com.internalexam.ui.student.SubmitConfirmationScreen
 import com.internalexam.ui.teacher.AutoGenerateExamScreen
 import com.internalexam.ui.teacher.CreateExamScreen
@@ -74,6 +76,7 @@ object Routes {
     const val Profile = "profile"
     const val StudentHome = "student/home"
     const val StudentExams = "student/exams"
+    const val StudentSchedule = "student/schedule"
     const val Lobby = "student/lobby"
     const val Taking = "student/taking"
     const val Submit = "student/submit"
@@ -154,7 +157,8 @@ fun InternalExamApp() {
                         ExamAttemptStore.selectExam(exam.id, exam)
                         nav.navigate(Routes.Result)
                     },
-                    onSeeAllResults = { nav.navigate(Routes.Results) }
+                    onSeeAllResults = { nav.navigate(Routes.Results) },
+                    onOpenSchedule = { nav.navigate(Routes.StudentSchedule) }
                 )
             }
             composable(Routes.StudentExams) {
@@ -174,6 +178,21 @@ fun InternalExamApp() {
             }
             composable(Routes.Results) {
                 StudentResultsScreen(
+                    onOpenResult = { exam ->
+                        ExamAttemptStore.selectExam(exam.id, exam)
+                        nav.navigate(Routes.Result)
+                    },
+                    onBack = { nav.popBackStack() }
+                )
+            }
+            composable(Routes.StudentSchedule) {
+                StudentScheduleScreen(
+                    onLobby = { exam ->
+                        if (!ExamAttemptStore.hasSavedAttempt(exam.id)) {
+                            ExamAttemptStore.startNewAttempt(exam.id, exam)
+                        }
+                        nav.navigate(Routes.Lobby)
+                    },
                     onOpenResult = { exam ->
                         ExamAttemptStore.selectExam(exam.id, exam)
                         nav.navigate(Routes.Result)
@@ -302,6 +321,7 @@ private fun RoleBottomBar(nav: NavHostController, current: String) {
         Role.STUDENT -> listOf(
             NavItem("Trang chủ", Routes.StudentHome, Icons.Default.Home),
             NavItem("Phòng thi", Routes.StudentExams, Icons.Default.Quiz),
+            NavItem("Lịch thi", Routes.StudentSchedule, Icons.Default.DateRange),
             NavItem("Kết quả", Routes.Results, Icons.Default.Assessment),
             NavItem("Hồ sơ", Routes.Profile, Icons.Default.Person)
         )

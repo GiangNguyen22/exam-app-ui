@@ -11,10 +11,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,25 +30,25 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.EventBusy
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -64,6 +62,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -75,24 +74,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.layout.ContentScale
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.internalexam.data.ExamAttemptStore
 import com.internalexam.data.SessionManager
 import com.internalexam.data.network.ApiClient
+import com.internalexam.data.network.ExamResponse
+import com.internalexam.data.network.ExamResultDetailResponse
+import com.internalexam.data.network.ExamSubmitRequest
+import com.internalexam.model.mock.NetworkState
 import com.internalexam.monitor.AppLifecycleMonitor
 import com.internalexam.monitor.NetworkMonitor
 import com.internalexam.monitor.ProctoringEventBuffer
-import com.internalexam.data.network.ExamResponse
-import com.internalexam.data.network.ExamQuestionResponse
-import com.internalexam.data.network.ExamResultDetailResponse
-import com.internalexam.data.network.ExamResultResponse
-import com.internalexam.data.network.ExamSubmitRequest
-import com.internalexam.model.mock.NetworkState
 import com.internalexam.ui.components.AppBackground
 import com.internalexam.ui.components.AvatarCircle
 import com.internalexam.ui.components.ChipText
@@ -107,10 +106,10 @@ import com.internalexam.ui.components.ScreenBottomPadding
 import com.internalexam.ui.components.SectionTitle
 import com.internalexam.ui.components.StatusPill
 import com.internalexam.ui.components.StyledProgress
+import com.internalexam.ui.exam.UiState
 import com.internalexam.ui.theme.AppAmber
 import com.internalexam.ui.theme.AppBlue
 import com.internalexam.ui.theme.AppCardBorder
-import com.internalexam.ui.theme.AppCoral
 import com.internalexam.ui.theme.AppIndigo
 import com.internalexam.ui.theme.AppMint
 import com.internalexam.ui.theme.AppMuted
@@ -119,32 +118,26 @@ import com.internalexam.ui.theme.AppSurface
 import com.internalexam.ui.theme.AppText
 import com.internalexam.ui.theme.BgGradient
 import com.internalexam.ui.theme.HeroGradient
+import com.internalexam.ui.theme.InternalExamTheme
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Date
 import java.util.Locale
-import java.util.TimeZone
 
 @Composable
 fun StudentHomeScreen(
     onLobby: (ExamResponse) -> Unit,
     onOpenResult: (ExamResponse) -> Unit,
-    onSeeAllResults: () -> Unit
+    onSeeAllResults: () -> Unit,
+    onOpenSchedule: () -> Unit,
+    viewModel: StudentHomeViewModel = viewModel()
 ) {
-    var exams by remember { mutableStateOf<List<ExamResponse>>(emptyList()) }
-    var examMetadata by remember { mutableStateOf<Map<Long, StudentExamMetadata>>(emptyMap()) }
-    var recentResults by remember { mutableStateOf<List<StudentRecentResult>>(emptyList()) }
-    var submittedExamIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
-    var loadMessage by remember { mutableStateOf<String?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var studentName by remember { mutableStateOf("Học sinh") }
-    var networkState by remember { mutableStateOf(NetworkState.SYNCING) }
+    val homeUiState by viewModel.state.collectAsState()
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val greeting = when {
         hour < 12 -> "Chào buổi sáng"
@@ -153,79 +146,17 @@ fun StudentHomeScreen(
     }
 
     LaunchedEffect(Unit) {
-        val authorization = SessionManager.authorizationHeader()
-        if (authorization == null) {
-            loadMessage = "Vui lòng đăng nhập lại."
-            networkState = NetworkState.OFFLINE
-            isLoading = false
-            return@LaunchedEffect
-        }
-        isLoading = true
-        // #7b: lấy tên thật của người dùng hiện tại.
-        runCatching { ApiClient.getCurrentUser(authorization).data }.getOrNull()?.let { profile ->
-            studentName = profile.fullName.takeIf { it.isNotBlank() } ?: profile.username
-        }
-        try {
-            val response = ApiClient.getExams(authorization)
-            val loadedExams = response.data.orEmpty()
-            val visibleExams = loadedExams.filterNot { it.isExpired() }
-            exams = visibleExams
-            val subjectNamesById = runCatching {
-                ApiClient.getSubjects(authorization).data.orEmpty().associate { it.id to it.name }
-            }.getOrDefault(emptyMap())
-
-            // #14: tải metadata + kết quả của từng đề song song thay vì tuần tự.
-            coroutineScope {
-                val metadataDeferred = visibleExams.map { exam ->
-                    async {
-                        val countFromExam = exam.questionCount ?: exam.totalQuestions
-                        val subjectFromExam = exam.subjectName ?: exam.subject
-                        if (countFromExam != null && !subjectFromExam.isNullOrBlank()) {
-                            exam.id to StudentExamMetadata(
-                                questionCount = countFromExam,
-                                subjectName = subjectFromExam
-                            )
-                        } else {
-                            val questions = runCatching {
-                                ApiClient.getExamQuestions(authorization, exam.id).data.orEmpty()
-                            }.getOrDefault(emptyList())
-                            val subjectIds = questions.mapNotNull { it.subjectId }.distinct()
-                            val subjectName = when {
-                                subjectIds.size == 1 -> subjectNamesById[subjectIds.first()]
-                                subjectIds.size > 1 -> "Nhiều môn"
-                                else -> subjectFromExam
-                            }
-                            exam.id to StudentExamMetadata(
-                                questionCount = questions.size.takeIf { it > 0 } ?: countFromExam,
-                                subjectName = subjectName
-                            )
-                        }
-                    }
-                }
-                val resultsDeferred = loadedExams.map { exam ->
-                    async {
-                        runCatching {
-                            ApiClient.getResult(authorization, exam.id).data?.let { result ->
-                                StudentRecentResult(exam, result)
-                            }
-                        }.getOrNull()
-                    }
-                }
-                examMetadata = metadataDeferred.awaitAll().toMap()
-                recentResults = resultsDeferred.awaitAll().filterNotNull()
-                    .sortedByDescending { it.result.submittedAt.orEmpty() }
-                val submittedIds = recentResults.filter { it.result.status == "SUBMITTED" }.map { it.exam.id }.toSet()
-                submittedExamIds = submittedIds
-            }
-            loadMessage = null
-            networkState = NetworkState.ONLINE
-        } catch (exception: Exception) {
-            loadMessage = "Không tải được đề thi lúc này."
-            networkState = NetworkState.OFFLINE
-        } finally {
-            isLoading = false
-        }
+        viewModel.loadHomeData()
     }
+
+    val state = (homeUiState as? UiState.Success)?.data
+    val isLoading = homeUiState is UiState.Loading
+    val studentName = state?.studentName ?: "Học sinh"
+    val exams = state?.exams.orEmpty()
+    val examMetadata = state?.examMetadata.orEmpty()
+    val recentResults = state?.recentResults.orEmpty()
+    val submittedExamIds = state?.submittedExamIds.orEmpty()
+    val loadMessage = (homeUiState as? UiState.Error)?.message
 
     Column(
         Modifier
@@ -248,12 +179,47 @@ fun StudentHomeScreen(
                     Text(studentName, style = MaterialTheme.typography.headlineMedium)
                 }
             }
-            StatusPill(networkState)
+            StatusPill(if (NetworkMonitor.isOnline.value) NetworkState.ONLINE else NetworkState.OFFLINE)
+        }
+
+        Card(
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = AppSurface),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp)
+                .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+                .clickable { onOpenSchedule() }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(AppIndigo.copy(alpha = 0.12f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.DateRange, contentDescription = null, tint = AppIndigo, modifier = Modifier.size(22.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text("Lịch thi theo tháng", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppText)
+                        Text("Xem tổng quan các ca thi đã lên lịch", style = MaterialTheme.typography.bodySmall, color = AppMuted)
+                    }
+                }
+                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppMuted)
+            }
         }
 
         SectionTitle("Phòng thi")
         if (loadMessage != null) {
-            InfoBanner(loadMessage.orEmpty(), AppAmber, Icons.Default.Info)
+            InfoBanner(loadMessage, AppAmber, Icons.Default.Info)
             Spacer(Modifier.height(12.dp))
         }
 
@@ -261,7 +227,7 @@ fun StudentHomeScreen(
             LoadingStateCard("Đang tải đề thi...")
         } else if (exams.isEmpty() && loadMessage == null) {
             EmptyExamState()
-            } else {
+        } else {
             exams.forEach { exam ->
                 val isSubmitted = exam.id in submittedExamIds
                 StudentExamRoomCard(
@@ -289,155 +255,6 @@ fun StudentHomeScreen(
     }
 }
 
-private data class StudentRecentResult(
-    val exam: ExamResponse,
-    val result: ExamResultResponse
-)
-
-private data class StudentExamMetadata(
-    val questionCount: Int?,
-    val subjectName: String?
-)
-
-@Composable
-private fun EmptyExamState() {
-    Card(
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = AppSurface),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                Modifier
-                    .size(64.dp)
-                    .background(AppAmber.copy(alpha = 0.12f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.EventBusy, contentDescription = null, tint = AppAmber, modifier = Modifier.size(34.dp))
-            }
-            Spacer(Modifier.height(14.dp))
-            Text("Chưa có đề thi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
-            Text("Giáo viên chưa mở phòng thi nào.", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
-        }
-    }
-    Spacer(Modifier.height(12.dp))
-}
-
-/** Thẻ một phòng thi, dùng chung cho màn Home và màn danh sách đề thi. */
-@Composable
-private fun StudentExamRoomCard(
-    exam: ExamResponse,
-    metadata: StudentExamMetadata?,
-    onEnter: () -> Unit,
-    onViewResult: (() -> Unit)? = null
-) {
-    val canEnterExam = exam.isOpenNow() && onViewResult == null
-    Card(
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = AppSurface),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 12.dp)
-            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
-    ) {
-        Row(Modifier.height(IntrinsicSize.Min)) {
-            Box(
-                Modifier
-                    .width(5.dp)
-                    .fillMaxHeight()
-                    .clip(MaterialTheme.shapes.small)
-                    .background(AppIndigo)
-            )
-            Column(
-                Modifier
-                    .padding(16.dp)
-                    .weight(1f)
-            ) {
-                Text(exam.title, style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    ChipText(metadata.questionCountLabel(exam), AppBlue)
-                    ChipText(exam.durationLabel(), AppAmber)
-                    ChipText(metadata.subjectLabel(exam), AppIndigo)
-                }
-                if (!canEnterExam && onViewResult == null) {
-                    Spacer(Modifier.height(8.dp))
-                    ChipText("Chưa mở", AppAmber)
-                }
-                Spacer(Modifier.height(14.dp))
-                if (onViewResult != null) {
-                    Button(
-                        onClick = onViewResult,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        shape = MaterialTheme.shapes.medium,
-                        colors = ButtonDefaults.buttonColors(containerColor = AppMint)
-                    ) {
-                        Text("Xem kết quả")
-                    }
-                } else {
-                    Button(
-                        onClick = onEnter,
-                        enabled = canEnterExam,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        shape = MaterialTheme.shapes.medium,
-                        colors = ButtonDefaults.buttonColors(containerColor = AppIndigo)
-                    ) {
-                        Text(if (canEnterExam) "Vào phòng thi" else "Chưa tới giờ mở")
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** Tải danh sách phòng thi (đã lọc đề hết hạn) + metadata môn/số câu, song song. */
-private suspend fun loadStudentExamRooms(
-    authorization: String
-): Pair<List<ExamResponse>, Map<Long, StudentExamMetadata>> {
-    val visibleExams = ApiClient.getExams(authorization).data.orEmpty().filterNot { it.isExpired() }
-    val subjectNamesById = runCatching {
-        ApiClient.getSubjects(authorization).data.orEmpty().associate { it.id to it.name }
-    }.getOrDefault(emptyMap())
-    val metadata = coroutineScope {
-        visibleExams.map { exam ->
-            async {
-                val countFromExam = exam.questionCount ?: exam.totalQuestions
-                val subjectFromExam = exam.subjectName ?: exam.subject
-                if (countFromExam != null && !subjectFromExam.isNullOrBlank()) {
-                    exam.id to StudentExamMetadata(countFromExam, subjectFromExam)
-                } else {
-                    val questions = runCatching {
-                        ApiClient.getExamQuestions(authorization, exam.id).data.orEmpty()
-                    }.getOrDefault(emptyList())
-                    val subjectIds = questions.mapNotNull { it.subjectId }.distinct()
-                    val subjectName = when {
-                        subjectIds.size == 1 -> subjectNamesById[subjectIds.first()]
-                        subjectIds.size > 1 -> "Nhiều môn"
-                        else -> subjectFromExam
-                    }
-                    exam.id to StudentExamMetadata(
-                        questionCount = questions.size.takeIf { it > 0 } ?: countFromExam,
-                        subjectName = subjectName
-                    )
-                }
-            }
-        }.awaitAll().toMap()
-    }
-    return visibleExams to metadata
-}
-
 @Composable
 fun StudentExamsScreen(onLobby: (ExamResponse) -> Unit, onOpenResult: (ExamResponse) -> Unit, onBack: () -> Unit) {
     var exams by remember { mutableStateOf<List<ExamResponse>>(emptyList()) }
@@ -454,11 +271,42 @@ fun StudentExamsScreen(onLobby: (ExamResponse) -> Unit, onOpenResult: (ExamRespo
             return@LaunchedEffect
         }
         try {
-            val (loadedExams, metadata) = loadStudentExamRooms(authorization)
-            exams = loadedExams
+            val visibleExams = fetchStudentExams(authorization).filterNot { it.isExpired() }
+            val subjectNamesById = runCatching {
+                ApiClient.getSubjects(authorization).data.orEmpty().associate { it.id to it.name }
+            }.getOrDefault(emptyMap())
+
+            val metadata = coroutineScope {
+                visibleExams.map { exam ->
+                    async {
+                        val countFromExam = exam.questionCount ?: exam.totalQuestions
+                        val subjectFromExam = exam.subjectName ?: exam.subject
+                        if (countFromExam != null && !subjectFromExam.isNullOrBlank()) {
+                            exam.id to StudentExamMetadata(countFromExam, subjectFromExam)
+                        } else {
+                            val questions = runCatching {
+                                ApiClient.getExamQuestions(authorization, exam.id).data.orEmpty()
+                            }.getOrDefault(emptyList())
+                            val subjectIds = questions.mapNotNull { it.subjectId }.distinct()
+                            val subjectName = when {
+                                subjectIds.size == 1 -> subjectNamesById[subjectIds.first()]
+                                subjectIds.size > 1 -> "Nhiều môn"
+                                else -> subjectFromExam
+                            }
+                            exam.id to StudentExamMetadata(
+                                questionCount = questions.size.takeIf { it > 0 } ?: countFromExam,
+                                subjectName = subjectName
+                            )
+                        }
+                    }
+                }.awaitAll().toMap()
+            }
+
+            exams = visibleExams
             examMetadata = metadata
-            coroutineScope {
-                val submittedIds = loadedExams.map { exam ->
+
+            val submittedIds = coroutineScope {
+                visibleExams.map { exam ->
                     async {
                         runCatching {
                             ApiClient.getResult(authorization, exam.id).data
@@ -467,8 +315,8 @@ fun StudentExamsScreen(onLobby: (ExamResponse) -> Unit, onOpenResult: (ExamRespo
                         }
                     }
                 }.awaitAll().filterNotNull().toSet()
-                submittedExamIds = submittedIds
             }
+            submittedExamIds = submittedIds
             message = null
         } catch (exception: Exception) {
             message = "Không tải được đề thi lúc này."
@@ -508,59 +356,6 @@ fun StudentExamsScreen(onLobby: (ExamResponse) -> Unit, onOpenResult: (ExamRespo
 }
 
 @Composable
-private fun StudentResultCard(item: StudentRecentResult, onClick: () -> Unit) {
-    val scoreColor = scoreColor(item.result.score)
-    Card(
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = AppSurface),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
-            .clickable { onClick() }
-    ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(48.dp)
-                    .background(scoreColor.copy(alpha = 0.12f), CircleShape)
-                    .border(2.dp, scoreColor.copy(alpha = 0.3f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    item.result.score?.takeIf { it.isNotBlank() } ?: "--",
-                    fontWeight = FontWeight.Bold,
-                    color = scoreColor,
-                    fontSize = 15.sp
-                )
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(item.exam.title, fontWeight = FontWeight.SemiBold, color = AppText)
-                Text(resultStatusLabel(item.result.status), color = AppMuted, style = MaterialTheme.typography.bodyMedium)
-            }
-            Text(resultDate(item.result.submittedAt), color = AppMuted, style = MaterialTheme.typography.labelMedium)
-            Spacer(Modifier.width(6.dp))
-            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppMuted, modifier = Modifier.size(20.dp))
-        }
-    }
-}
-
-/** Tải kết quả của mọi đề (song song) cho danh sách "Tất cả kết quả". */
-private suspend fun loadStudentResults(authorization: String): List<StudentRecentResult> {
-    val exams = ApiClient.getExams(authorization).data.orEmpty()
-    return coroutineScope {
-        exams.map { exam ->
-            async {
-                runCatching {
-                    ApiClient.getResult(authorization, exam.id).data?.let { StudentRecentResult(exam, it) }
-                }.getOrNull()
-            }
-        }.awaitAll().filterNotNull()
-            .sortedByDescending { it.result.submittedAt.orEmpty() }
-    }
-}
-
-@Composable
 fun StudentResultsScreen(onOpenResult: (ExamResponse) -> Unit, onBack: () -> Unit) {
     var results by remember { mutableStateOf<List<StudentRecentResult>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -574,7 +369,7 @@ fun StudentResultsScreen(onOpenResult: (ExamResponse) -> Unit, onBack: () -> Uni
             return@LaunchedEffect
         }
         try {
-            results = loadStudentResults(authorization)
+            results = fetchAllStudentResults(authorization)
             message = null
         } catch (exception: Exception) {
             message = "Không tải được kết quả lúc này."
@@ -611,125 +406,15 @@ fun StudentResultsScreen(onOpenResult: (ExamResponse) -> Unit, onBack: () -> Uni
 }
 
 @Composable
-private fun EmptyResultsState() {
-    Card(
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = AppSurface),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                Modifier
-                    .size(64.dp)
-                    .background(AppAmber.copy(alpha = 0.12f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Assessment, contentDescription = null, tint = AppAmber, modifier = Modifier.size(34.dp))
-            }
-            Spacer(Modifier.height(14.dp))
-            Text("Chưa có kết quả bài thi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
-            Text("Hoàn thành một bài thi để xem kết quả ở đây.", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
-        }
-    }
-}
-
-private fun StudentExamMetadata?.questionCountLabel(exam: ExamResponse): String {
-    val count = this?.questionCount ?: exam.questionCount ?: exam.totalQuestions
-    return count?.let { "$it câu" } ?: "-- câu"
-}
-
-private fun ExamResponse.durationLabel(): String {
-    return durationMinutes?.let { "$it phút" } ?: "-- phút"
-}
-
-private fun StudentExamMetadata?.subjectLabel(exam: ExamResponse): String {
-    return this?.subjectName?.takeIf { it.isNotBlank() }
-        ?: exam.subjectName?.takeIf { it.isNotBlank() }
-        ?: exam.subject?.takeIf { it.isNotBlank() }
-        ?: "Chưa rõ môn"
-}
-
-private fun scoreColor(score: String?): Color {
-    val numericScore = score?.replace(",", ".")?.toFloatOrNull()
-    return when {
-        numericScore == null -> AppMuted
-        numericScore >= 8f -> AppMint
-        numericScore >= 5f -> AppAmber
-        else -> AppRed
-    }
-}
-
-private fun resultStatusLabel(status: String): String {
-    return when (status) {
-        "SUBMITTED" -> "Đã nộp bài"
-        "DOING" -> "Đang làm bài"
-        "CANCELLED" -> "Đã hủy"
-        else -> status
-    }
-}
-
-private fun resultDate(value: String?): String {
-    return value?.takeIf { it.isNotBlank() }?.replace("T", " ")?.take(16) ?: "--"
-}
-
-private fun ExamResponse.isExpired(now: Long = System.currentTimeMillis()): Boolean {
-    val endAt = endTime.parseBackendTimeMillis() ?: return false
-    return endAt <= now
-}
-
-private fun ExamResponse.isOpenNow(now: Long = System.currentTimeMillis()): Boolean {
-    val startAt = startTime.parseBackendTimeMillis()
-    val endAt = endTime.parseBackendTimeMillis()
-    return (startAt == null || startAt <= now) && (endAt == null || endAt > now)
-}
-
-private fun String?.parseBackendTimeMillis(): Long? {
-    val raw = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
-    val patterns = listOf(
-        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-        "yyyy-MM-dd'T'HH:mm:ss'Z'",
-        "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
-        "yyyy-MM-dd'T'HH:mm:ssXXX",
-        "yyyy-MM-dd'T'HH:mm:ss",
-        "yyyy-MM-dd HH:mm:ss",
-        "yyyy-MM-dd HH:mm"
-    )
-    return patterns.firstNotNullOfOrNull { pattern ->
-        runCatching {
-            SimpleDateFormat(pattern, Locale.US).apply {
-                isLenient = false
-                if (pattern.endsWith("'Z'")) {
-                    timeZone = TimeZone.getTimeZone("UTC")
-                }
-            }.parse(raw)?.time
-        }.getOrNull()
-    }
-}
-
-private fun formatTimeLeft(seconds: Int): String {
-    val safeSeconds = seconds.coerceAtLeast(0)
-    val minutes = safeSeconds / 60
-    val remainingSeconds = safeSeconds % 60
-    return "%02d:%02d".format(minutes, remainingSeconds)
-}
-
-private fun savedStatusText(savedAt: Long?): String {
-    return savedAt?.let {
-        "Đã lưu ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it))}"
-    } ?: "Chưa lưu"
-}
-
-@Composable
 fun ExamLobbyScreen(onStart: () -> Unit, onBack: () -> Unit) {
     val exam = ExamAttemptStore.selectedExam.value
+    val canStart = exam?.isOpenNow() == true
+    val lobbyStatus = when {
+        exam == null -> "Chưa có đề để bắt đầu"
+        canStart -> "Có thể bắt đầu làm bài"
+        exam.isNotOpenYet() -> "Chưa đến thời gian mở thi"
+        else -> "Đã hết thời gian tham gia"
+    }
     AppBackground {
         ExamTopBar("Phòng thi", onBack)
         GradientHero(
@@ -740,9 +425,9 @@ fun ExamLobbyScreen(onStart: () -> Unit, onBack: () -> Unit) {
         SectionTitle("Trạng thái đề thi")
         MetricCard(
             "Gói đề thi",
-            if (exam != null) "Sẵn sàng" else "Chưa sẵn sàng",
-            if (exam != null) "Có thể bắt đầu làm bài" else "Chưa có đề để bắt đầu",
-            if (exam != null) AppMint else AppAmber,
+            if (canStart) "Sẵn sàng" else "Chưa sẵn sàng",
+            lobbyStatus,
+            if (canStart) AppMint else AppAmber,
             Icons.Default.CloudDone
         )
 
@@ -768,7 +453,7 @@ fun ExamLobbyScreen(onStart: () -> Unit, onBack: () -> Unit) {
         }
 
         Spacer(Modifier.weight(1f))
-        PrimaryAction("Bắt đầu làm bài", enabled = exam != null, onClick = onStart)
+        PrimaryAction("Bắt đầu làm bài", enabled = canStart, onClick = onStart)
         Spacer(Modifier.height(ScreenBottomPadding))
     }
 }
@@ -817,8 +502,6 @@ fun ExamTakingScreen(
         }
     }
 
-    // Đồng hồ neo theo mốc kết thúc tuyệt đối -> không reset khi điều hướng qua lại,
-    // và tự động nộp bài khi hết giờ.
     LaunchedEffect(selectedExam?.id, isLoading, totalQuestions) {
         if (isLoading || totalQuestions == 0) return@LaunchedEffect
         ExamAttemptStore.ensureAttemptDeadline(durationMinutes)
@@ -867,21 +550,7 @@ fun ExamTakingScreen(
     LaunchedEffect(ExamAttemptStore.backendExamId) {
         AppLifecycleMonitor.start(ExamAttemptStore.backendExamId)
     }
-    LaunchedEffect(ExamAttemptStore.backendExamId) {
-        var wasOnline = NetworkMonitor.isOnline.value
-        while (true) {
-            delay(5_000L)
-            val nowOnline = NetworkMonitor.isOnline.value
-            if (wasOnline != nowOnline) {
-                if (nowOnline) {
-                    ProctoringEventBuffer.push("CONNECTION_RESTORED", "Thí sinh đã kết nối lại")
-                } else {
-                    ProctoringEventBuffer.push("CONNECTION_LOST", "Thí sinh mất kết nối mạng")
-                }
-                wasOnline = nowOnline
-            }
-        }
-    }
+
     DisposableEffect(Unit) {
         onDispose { AppLifecycleMonitor.stop() }
     }
@@ -891,7 +560,6 @@ fun ExamTakingScreen(
     AppBackground {
         ExamTopBar(selectedExam?.title ?: "Đề thi") { showExitConfirm = true }
 
-        // Timer & sync bar
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -942,7 +610,6 @@ fun ExamTakingScreen(
             } else if (totalQuestions == 0) {
                 InfoBanner("Đề thi này chưa có câu hỏi.", AppAmber, Icons.Default.Info)
             } else {
-                // Question card
                 AnimatedContent(
                     targetState = safeIndex,
                     transitionSpec = { fadeIn() togetherWith fadeOut() },
@@ -971,7 +638,7 @@ fun ExamTakingScreen(
                             if (question.imageUrl != null) {
                                 Spacer(Modifier.height(12.dp))
                                 AsyncImage(
-                                    model = question.imageUrl,
+                                    model = if (question.imageUrl.orEmpty().startsWith("http")) question.imageUrl else "http://192.168.119.146:8080${question.imageUrl}",
                                     contentDescription = null,
                                     modifier = Modifier.fillMaxWidth().heightIn(max = 250.dp).clip(MaterialTheme.shapes.medium),
                                     contentScale = ContentScale.Fit
@@ -1039,12 +706,11 @@ fun ExamTakingScreen(
                     }
                 }
 
-            Spacer(Modifier.height(10.dp))
-            InfoBanner("Vui lòng giữ ứng dụng mở trong lúc thi. Đáp án chỉ được gửi khi bạn nộp bài.", AppAmber, Icons.Default.WifiOff)
+                Spacer(Modifier.height(10.dp))
+                InfoBanner("Vui lòng giữ ứng dụng mở trong lúc thi. Đáp án chỉ được gửi khi bạn nộp bài.", AppAmber, Icons.Default.WifiOff)
             }
         }
 
-        // #10: thanh chuyển nhanh được ghim cố định, luôn thấy mà không cần cuộn.
         if (!isLoading && totalQuestions > 0) {
             Spacer(Modifier.height(8.dp))
             Text("Chuyển nhanh", style = MaterialTheme.typography.labelMedium, color = AppMuted)
@@ -1298,7 +964,7 @@ fun ResultScreen(onBack: () -> Unit) {
         try {
             val response = ApiClient.getResultDetail(authorization, ExamAttemptStore.backendExamId)
             detail = response.data
-            message = if (response.data != null) null else (response.message ?: "Chưa có kết quả.")
+            message = if (response.data != null) null else "Chưa có kết quả."
         } catch (exception: Exception) {
             message = "Chưa có kết quả bài thi."
         } finally {
@@ -1373,243 +1039,479 @@ fun ResultScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun AnswerDetailRow(label: String, value: String, valueColor: Color) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Text(
-            label,
-            color = AppMuted,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.width(100.dp)
-        )
-        Text(
-            value,
-            color = valueColor,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium
-        )
-    }
-}
-
-@Composable
-private fun AiExplanableQuestionCard(
-    question: com.internalexam.data.network.ResultQuestionResponse,
-    subject: String?
+fun StudentScheduleScreen(
+    onLobby: (ExamResponse) -> Unit,
+    onOpenResult: (ExamResponse) -> Unit,
+    onBack: () -> Unit
 ) {
-    var explainState by remember { mutableStateOf<ExplainState>(ExplainState.Idle) }
+    val todayCal = remember { Calendar.getInstance() }
+    var selectedYear by remember { mutableIntStateOf(todayCal.get(Calendar.YEAR)) }
+    var selectedMonth by remember { mutableIntStateOf(todayCal.get(Calendar.MONTH)) }
+    var selectedDay by remember { mutableIntStateOf(todayCal.get(Calendar.DAY_OF_MONTH)) }
 
-    val correctAnswerText = question.answers
-        ?.filter { it.correct == true }
-        ?.joinToString(", ") { it.content }
-        ?: ""
+    var exams by remember { mutableStateOf<List<ExamResponse>>(emptyList()) }
+    var submittedExamIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var message by remember { mutableStateOf<String?>(null) }
 
-    val studentAnswerText = run {
-        val selectedIds = question.selectedAnswerIds.orEmpty().toSet()
-        if (selectedIds.isEmpty() && question.fillContent != null) {
-            question.fillContent
-        } else {
-            question.answers
-                ?.filter { it.id in selectedIds }
-                ?.joinToString(", ") { it.content }
-                ?: ""
+    fun changeMonth(delta: Int) {
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.YEAR, selectedYear)
+            set(Calendar.MONTH, selectedMonth + delta)
+            set(Calendar.DAY_OF_MONTH, 1)
+        }
+        selectedYear = cal.get(Calendar.YEAR)
+        selectedMonth = cal.get(Calendar.MONTH)
+        val maxDays = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+        if (selectedDay > maxDays) {
+            selectedDay = maxDays
         }
     }
 
-    Card(
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = AppSurface),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp)
-            .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            val isCorrect = question.correct == true
-            val statusColor = if (isCorrect) AppMint else AppRed
-            val statusLabel = if (question.blank == true) "Bỏ trống" else if (isCorrect) "Đúng" else "Sai"
+    LaunchedEffect(Unit) {
+        val authorization = SessionManager.authorizationHeader()
+        if (authorization == null) {
+            message = "Vui lòng đăng nhập lại."
+            isLoading = false
+            return@LaunchedEffect
+        }
+        isLoading = true
+        try {
+            val allExams = fetchStudentExams(authorization)
+            exams = allExams
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Câu ${question.orderIndex?.takeIf { it > 0 } ?: "?"}",
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(Modifier.weight(1f))
-                Surface(
-                    color = statusColor.copy(alpha = 0.12f),
-                    shape = CircleShape,
-                    modifier = Modifier.border(1.dp, statusColor.copy(alpha = 0.35f), CircleShape)
-                ) {
+            // Auto-navigate calendar to the nearest upcoming scheduled exam date if current month has no exams
+            val currentMonthHasExams = allExams.any { exam ->
+                val startMs = exam.startTime.parseBackendTimeMillis()
+                if (startMs == null) false
+                else {
+                    val cal = Calendar.getInstance().apply { timeInMillis = startMs }
+                    cal.get(Calendar.YEAR) == selectedYear && cal.get(Calendar.MONTH) == selectedMonth
+                }
+            }
+
+            if (!currentMonthHasExams) {
+                val now = System.currentTimeMillis()
+                val nearestFutureExam = allExams.filter { exam ->
+                    val startMs = exam.startTime.parseBackendTimeMillis()
+                    startMs != null && startMs >= now
+                }.minByOrNull { it.startTime.parseBackendTimeMillis()!! }
+
+                if (nearestFutureExam != null) {
+                    val startMs = nearestFutureExam.startTime.parseBackendTimeMillis()!!
+                    val cal = Calendar.getInstance().apply { timeInMillis = startMs }
+                    selectedYear = cal.get(Calendar.YEAR)
+                    selectedMonth = cal.get(Calendar.MONTH)
+                    selectedDay = cal.get(Calendar.DAY_OF_MONTH)
+                }
+            }
+
+            val submittedIds = mutableSetOf<Long>()
+            coroutineScope {
+                allExams.map { exam ->
+                    async {
+                        runCatching {
+                            val res = ApiClient.getResult(authorization, exam.id).data
+                            if (res?.status == "SUBMITTED") {
+                                synchronized(submittedIds) { submittedIds.add(exam.id) }
+                            }
+                        }
+                    }
+                }.awaitAll()
+            }
+            submittedExamIds = submittedIds
+            message = null
+        } catch (e: Exception) {
+            message = "Không thể tải lịch thi lúc này. Vui lòng kiểm tra kết nối."
+        } finally {
+            isLoading = false
+        }
+    }
+
+    AppBackground {
+        ExamTopBar("Lịch thi theo tháng", onBack)
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = AppSurface),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+            ) {
+                Column(Modifier.padding(16.dp)) {
                     Row(
-                        Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = if (statusLabel == "Đúng") Icons.Default.CheckCircle else Icons.Default.Close,
-                            contentDescription = null,
-                            tint = statusColor,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(Modifier.width(5.dp))
-                        Text(
-                            statusLabel,
-                            color = statusColor,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { changeMonth(-1) }) {
+                                Text("‹", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            }
 
-            Text(
-                question.content,
-                color = AppText,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(top = 2.dp)
-            )
-
-            if (studentAnswerText.isNotBlank()) {
-                AnswerDetailRow(
-                    label = "Bài làm",
-                    value = studentAnswerText,
-                    valueColor = if (isCorrect) AppMint else AppCoral
-                )
-            } else if (question.fillContent != null) {
-                AnswerDetailRow("Bài làm", question.fillContent.orEmpty(), if (isCorrect) AppMint else AppCoral)
-            }
-
-            if (question.correct != true && correctAnswerText.isNotBlank()) {
-                AnswerDetailRow(label = "Đáp án đúng", value = correctAnswerText, valueColor = AppMint)
-            }
-
-            when (val state = explainState) {
-                is ExplainState.Idle -> {
-                    OutlinedButton(
-                        onClick = { explainState = ExplainState.Loading },
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.PhoneAndroid, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Giải thích bằng AI")
-                    }
-                }
-                is ExplainState.Loading -> {
-                    Surface(
-                        color = AppIndigo.copy(alpha = 0.06f),
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, AppIndigo.copy(alpha = 0.2f), MaterialTheme.shapes.medium)
-                    ) {
-                        Row(
-                            Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.5.dp,
-                                color = AppIndigo
+                            val monthFmt = SimpleDateFormat("MM, yyyy", Locale("vi", "VN"))
+                            val displayCal = Calendar.getInstance().apply {
+                                set(Calendar.YEAR, selectedYear)
+                                set(Calendar.MONTH, selectedMonth)
+                                set(Calendar.DAY_OF_MONTH, 1)
+                            }
+                            Text(
+                                text = "Tháng " + monthFmt.format(displayCal.time),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = AppText,
+                                modifier = Modifier.padding(horizontal = 4.dp)
                             )
-                            Spacer(Modifier.width(12.dp))
-                            Text("Đang tạo giải thích...", color = AppIndigo, style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                }
-                is ExplainState.Error -> {
-                    Card(
-                        shape = MaterialTheme.shapes.medium,
-                        colors = CardDefaults.cardColors(containerColor = AppRed.copy(alpha = 0.06f)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, AppRed.copy(alpha = 0.25f), MaterialTheme.shapes.medium)
-                    ) {
-                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.ErrorOutline, null, tint = AppRed, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Không thể giải thích", color = AppRed, fontWeight = FontWeight.Bold)
-                            }
-                            Text(state.message, color = AppMuted, style = MaterialTheme.typography.bodySmall)
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                TextButton(onClick = { explainState = ExplainState.Idle }) {
-                                    Text("Thử lại")
-                                }
+
+                            TextButton(onClick = { changeMonth(1) }) {
+                                Text("›", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                             }
                         }
+
+                        OutlinedButton(
+                            onClick = {
+                                val now = Calendar.getInstance()
+                                selectedYear = now.get(Calendar.YEAR)
+                                selectedMonth = now.get(Calendar.MONTH)
+                                selectedDay = now.get(Calendar.DAY_OF_MONTH)
+                            },
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            Text("Hôm nay", style = MaterialTheme.typography.labelMedium)
+                        }
                     }
-                }
-                is ExplainState.Success -> {
-                    Card(
-                        shape = MaterialTheme.shapes.medium,
-                        colors = CardDefaults.cardColors(containerColor = AppIndigo.copy(alpha = 0.07f)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, AppIndigo.copy(alpha = 0.22f), MaterialTheme.shapes.medium)
+
+                    Spacer(Modifier.height(12.dp))
+
+                    val weekdays = listOf("T2", "T3", "T4", "T5", "T6", "T7", "CN")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(
-                                    color = AppIndigo.copy(alpha = 0.14f),
-                                    shape = CircleShape,
-                                    modifier = Modifier.size(30.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Default.PhoneAndroid, null, tint = AppIndigo, modifier = Modifier.size(16.dp))
+                        weekdays.forEach { day ->
+                            Text(
+                                text = day,
+                                modifier = Modifier.weight(1f),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = AppMuted
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    val monthCal = Calendar.getInstance().apply {
+                        set(Calendar.YEAR, selectedYear)
+                        set(Calendar.MONTH, selectedMonth)
+                        set(Calendar.DAY_OF_MONTH, 1)
+                    }
+                    val daysInMonth = monthCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+                    val firstDayOfWeek = monthCal.get(Calendar.DAY_OF_WEEK)
+                    val leadingEmptyCount = (firstDayOfWeek + 5) % 7
+
+                    val totalCells = leadingEmptyCount + daysInMonth
+                    val rowCount = (totalCells + 6) / 7
+
+                    val isCurrentMonthToday = todayCal.get(Calendar.YEAR) == selectedYear &&
+                            todayCal.get(Calendar.MONTH) == selectedMonth
+                    val todayDateNumber = if (isCurrentMonthToday) todayCal.get(Calendar.DAY_OF_MONTH) else -1
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        for (r in 0 until rowCount) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                for (c in 0 until 7) {
+                                    val cellIndex = r * 7 + c
+                                    val dayNum = cellIndex - leadingEmptyCount + 1
+
+                                    if (dayNum in 1..daysInMonth) {
+                                        val isSelected = dayNum == selectedDay
+                                        val isToday = dayNum == todayDateNumber
+                                        val dayExams = exams.filter { it.occursOnDate(selectedYear, selectedMonth, dayNum) }
+                                        val hasExams = dayExams.isNotEmpty()
+                                        val dominantStatus = dayExams.map { StudentExamStatus.compute(it, isSubmitted = it.id in submittedExamIds) }
+                                            .minByOrNull { it.ordinal } ?: StudentExamStatus.NOT_STARTED
+
+                                        val cellBg = if (isSelected) AppIndigo else AppSurface
+                                        val textColor = if (isSelected) Color.White else AppText
+
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(48.dp)
+                                                .padding(2.dp)
+                                                .clip(MaterialTheme.shapes.small)
+                                                .background(cellBg)
+                                                .then(
+                                                    if (isToday && !isSelected)
+                                                        Modifier.border(1.5.dp, AppIndigo, MaterialTheme.shapes.small)
+                                                    else if (!isSelected)
+                                                        Modifier.border(0.5.dp, AppCardBorder, MaterialTheme.shapes.small)
+                                                    else Modifier
+                                                )
+                                                .clickable { selectedDay = dayNum },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                Text(
+                                                    text = dayNum.toString(),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal,
+                                                    color = textColor
+                                                )
+                                                if (hasExams) {
+                                                    Spacer(Modifier.height(2.dp))
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        val dotColor = if (isSelected) Color.White else dominantStatus.color
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(5.dp)
+                                                                .background(dotColor, CircleShape)
+                                                        )
+                                                        if (dayExams.size > 1) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(5.dp)
+                                                                    .background(dotColor, CircleShape)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        Spacer(modifier = Modifier.weight(1f))
                                     }
                                 }
-                                Spacer(Modifier.width(10.dp))
-                                Text("Giải thích AI", color = AppIndigo, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
                             }
-                            HorizontalDivider(color = AppIndigo.copy(alpha = 0.15f))
-                            Text(
-                                state.explanation,
-                                color = AppText,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                TextButton(onClick = { explainState = ExplainState.Idle }) {
-                                    Text("Ẩn", color = AppIndigo)
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            SectionTitle(
+                title = formatSelectedDateHeader(selectedYear, selectedMonth, selectedDay),
+                subtitle = "Danh sách ca thi trong ngày"
+            )
+
+            if (isLoading) {
+                LoadingStateCard("Đang tải danh sách ca thi...")
+            } else if (message != null) {
+                InfoBanner(message.orEmpty(), AppAmber, Icons.Default.Info)
+            } else {
+                val examsOnSelectedDay = exams.filter {
+                    it.occursOnDate(selectedYear, selectedMonth, selectedDay)
+                }
+
+                val nextUpcomingExam = remember(exams) {
+                    val now = System.currentTimeMillis()
+                    exams.filter { exam ->
+                        val startMillis = exam.startTime.parseBackendTimeMillis()
+                        startMillis != null && startMillis > now
+                    }.minByOrNull { it.startTime.parseBackendTimeMillis()!! }
+                }
+
+                if (examsOnSelectedDay.isEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Card(
+                            shape = MaterialTheme.shapes.large,
+                            colors = CardDefaults.cardColors(containerColor = AppSurface),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(Icons.Default.EventBusy, contentDescription = null, tint = AppMuted, modifier = Modifier.size(36.dp))
+                                Spacer(Modifier.height(8.dp))
+                                Text("Không có lịch thi trong ngày này", color = AppMuted, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+
+                        if (nextUpcomingExam != null) {
+                            val nextStartMillis = nextUpcomingExam.startTime.parseBackendTimeMillis()
+                            if (nextStartMillis != null) {
+                                val nextCal = Calendar.getInstance().apply { timeInMillis = nextStartMillis }
+                                Card(
+                                    shape = MaterialTheme.shapes.large,
+                                    colors = CardDefaults.cardColors(containerColor = AppIndigo.copy(alpha = 0.08f)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(1.dp, AppIndigo.copy(alpha = 0.25f), MaterialTheme.shapes.large)
+                                ) {
+                                    Column(Modifier.padding(16.dp)) {
+                                        Text("Ca thi tiếp theo:", color = AppIndigo, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(nextUpcomingExam.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppText)
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            "Ngày: %02d/%02d/%04d • Giờ: %s".format(
+                                                nextCal.get(Calendar.DAY_OF_MONTH),
+                                                nextCal.get(Calendar.MONTH) + 1,
+                                                nextCal.get(Calendar.YEAR),
+                                                formatExamTimeRange(nextUpcomingExam.startTime, nextUpcomingExam.endTime, nextUpcomingExam.durationMinutes)
+                                            ),
+                                            color = AppMuted,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Spacer(Modifier.height(10.dp))
+                                        Button(
+                                            onClick = {
+                                                selectedYear = nextCal.get(Calendar.YEAR)
+                                                selectedMonth = nextCal.get(Calendar.MONTH)
+                                                selectedDay = nextCal.get(Calendar.DAY_OF_MONTH)
+                                            },
+                                            shape = MaterialTheme.shapes.medium,
+                                            colors = ButtonDefaults.buttonColors(containerColor = AppIndigo),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text("Chuyển đến ngày thi này")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    examsOnSelectedDay.forEach { exam ->
+                        val isSubmitted = exam.id in submittedExamIds
+                        val examStatus = StudentExamStatus.compute(exam, isSubmitted = isSubmitted)
+
+                        Card(
+                            shape = MaterialTheme.shapes.large,
+                            colors = CardDefaults.cardColors(containerColor = AppSurface),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 10.dp)
+                                .border(1.dp, AppCardBorder, MaterialTheme.shapes.large)
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        ChipText(exam.subjectName ?: exam.subject ?: "Môn học", AppBlue)
+                                        ChipText("Mã: ${exam.code}", AppIndigo)
+                                    }
+                                    ChipText(examStatus.label, examStatus.color)
+                                }
+
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    text = exam.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AppText
+                                )
+
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Schedule, contentDescription = null, tint = AppMuted, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            formatExamTimeRange(exam.startTime, exam.endTime, exam.durationMinutes),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = AppMuted
+                                        )
+                                    }
+                                    exam.durationMinutes?.let { dur ->
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Timer, contentDescription = null, tint = AppMuted, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("$dur phút", style = MaterialTheme.typography.bodyMedium, color = AppMuted)
+                                        }
+                                    }
+                                }
+
+                                Spacer(Modifier.height(12.dp))
+                                HorizontalDivider(color = AppCardBorder)
+                                Spacer(Modifier.height(12.dp))
+
+                                if (isSubmitted) {
+                                    OutlinedButton(
+                                        onClick = { onOpenResult(exam) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = MaterialTheme.shapes.medium
+                                    ) {
+                                        Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Xem kết quả bài thi")
+                                    }
+                                } else if (examStatus == StudentExamStatus.IN_PROGRESS) {
+                                    Button(
+                                        onClick = { onLobby(exam) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = MaterialTheme.shapes.medium,
+                                        colors = ButtonDefaults.buttonColors(containerColor = AppMint)
+                                    ) {
+                                        Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Vào phòng thi ngay")
+                                    }
+                                } else if (examStatus == StudentExamStatus.NOT_STARTED) {
+                                    Button(
+                                        onClick = { onLobby(exam) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = MaterialTheme.shapes.medium,
+                                        colors = ButtonDefaults.buttonColors(containerColor = AppIndigo)
+                                    ) {
+                                        Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Sắp diễn ra • Chi tiết ca thi")
+                                    }
+                                } else {
+                                    Text(
+                                        "Đã hết thời gian làm bài thi.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = AppMuted
+                                    )
                                 }
                             }
                         }
                     }
                 }
             }
-        }
-    }
 
-    if (explainState is ExplainState.Loading) {
-        LaunchedEffect(question.questionId) {
-            explainState = ExplainState.Loading
-            val authorization = SessionManager.authorizationHeader()
-            if (authorization == null) {
-                explainState = ExplainState.Error("Vui lòng đăng nhập lại.")
-                return@LaunchedEffect
-            }
-            val request = com.internalexam.data.network.AiExplainRequest(
-                question = question.content,
-                correctAnswer = correctAnswerText.ifBlank { null },
-                studentAnswer = studentAnswerText.ifBlank { null },
-                correct = question.correct == true,
-                subject = subject
-            )
-            explainState = try {
-                val response = ApiClient.explainAnswer(authorization, request)
-                val text = response.data?.explanation
-                if (text != null) ExplainState.Success(text)
-                else ExplainState.Error("Không thể tạo giải thích lúc này.")
-            } catch (e: Exception) {
-                ExplainState.Error("Lỗi kết nối. Vui lòng thử lại.")
-            }
+            Spacer(Modifier.height(ScreenBottomPadding))
         }
     }
 }
 
-private sealed class ExplainState {
-    object Idle : ExplainState()
-    object Loading : ExplainState()
-    data class Success(val explanation: String) : ExplainState()
-    data class Error(val message: String) : ExplainState()
+@Preview(showBackground = true)
+@Composable
+fun StudentScheduleScreenPreview() {
+    InternalExamTheme {
+        StudentScheduleScreen(
+            onLobby = {},
+            onOpenResult = {},
+            onBack = {}
+        )
+    }
 }

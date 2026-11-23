@@ -163,6 +163,20 @@ data class ExamResultResponse(
     val submittedAt: String?
 )
 
+data class StudentExamResultResponse(
+    val resultId: Long,
+    val examId: Long,
+    val examCode: String? = null,
+    val examTitle: String? = null,
+    val score: String?,
+    val status: String,
+    val submittedAt: String?,
+    val totalQuestions: Int? = null,
+    val correctCount: Int? = null,
+    val wrongCount: Int? = null,
+    val blankCount: Int? = null
+)
+
 data class ExamResultDetailResponse(
     val resultId: Long,
     val examId: Long,

@@ -11,6 +11,8 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
     private val backendUrls = listOf(
+        "http://192.168.119.146:8080/",
+        "http://192.168.119.146/",
         "http://10.0.2.2:8080/",
         "http://180.93.43.211:8080/",
         "http://127.0.0.1:8080/",
@@ -81,6 +83,10 @@ object ApiClient {
         return callBackend { it.getExams(authorization) }
     }
 
+    suspend fun getScheduledExams(authorization: String): ApiResponse<List<ExamResponse>> {
+        return callBackend { it.getScheduledExams(authorization) }
+    }
+
     suspend fun getQuestions(authorization: String): ApiResponse<List<QuestionResponse>> {
         return callBackend { it.getQuestions(authorization) }
     }
@@ -111,6 +117,10 @@ object ApiClient {
 
     suspend fun getResult(authorization: String, examId: Long): ApiResponse<ExamResultResponse> {
         return callBackend { it.getResult(authorization, examId) }
+    }
+
+    suspend fun viewStudentResults(authorization: String, studentId: Long): ApiResponse<List<StudentExamResultResponse>> {
+        return callBackend { it.viewStudentResults(authorization, studentId) }
     }
 
     suspend fun getResultDetail(authorization: String, examId: Long): ApiResponse<ExamResultDetailResponse> {
