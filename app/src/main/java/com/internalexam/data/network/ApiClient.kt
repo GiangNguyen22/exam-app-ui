@@ -1,5 +1,6 @@
 package com.internalexam.data.network
 
+import com.internalexam.BuildConfig
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -10,14 +11,21 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
-    private val backendUrls = listOf(
-        "http://192.168.119.146:8080/",
-        "http://192.168.119.146/",
-        "http://10.0.2.2:8080/",
-        "http://180.93.43.211:8080/",
-        "http://127.0.0.1:8080/",
-        "http://localhost:8080/"
-    )
+    private fun getTargetBaseUrls(): List<String> {
+        val configuredUrl = BuildConfig.API_BASE_URL.let {
+            if (it.endsWith("/")) it else "$it/"
+        }
+        val urls = mutableListOf(configuredUrl)
+        if (BuildConfig.DEBUG) {
+            val devFallbacks = listOf("http://10.0.2.2:8080/", "http://127.0.0.1:8080/", "http://localhost:8080/")
+            for (fallback in devFallbacks) {
+                if (!urls.contains(fallback)) {
+                    urls.add(fallback)
+                }
+            }
+        }
+        return urls
+    }
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(2, TimeUnit.SECONDS)
@@ -247,7 +255,7 @@ object ApiClient {
     private suspend fun <T> callBackend(client: OkHttpClient = httpClient, block: suspend (AuthApi) -> T): T {
         var lastException: IOException? = null
 
-        for (baseUrl in backendUrls) {
+        for (baseUrl in getTargetBaseUrls()) {
             try {
                 return block(createAuthApi(baseUrl, client))
             } catch (exception: IOException) {
