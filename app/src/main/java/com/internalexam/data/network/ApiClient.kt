@@ -28,6 +28,7 @@ object ApiClient {
     }
 
     private val httpClient = OkHttpClient.Builder()
+        .authenticator(TokenAuthenticator())
         .connectTimeout(2, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
@@ -41,6 +42,14 @@ object ApiClient {
 
     suspend fun login(request: LoginRequest): ApiResponse<LoginResponse> {
         return callBackend { it.login(request) }
+    }
+
+    suspend fun refreshToken(request: RefreshTokenRequest): ApiResponse<TokenRefreshResponse> {
+        return callBackend { it.refreshToken(request) }
+    }
+
+    suspend fun logout(authorization: String?, request: LogoutRequest?): ApiResponse<Void> {
+        return callBackend { it.logout(authorization, request) }
     }
 
     suspend fun createQuestion(authorization: String, request: QuestionCreateRequest): ApiResponse<QuestionResponse> {

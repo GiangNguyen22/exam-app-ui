@@ -15,6 +15,15 @@ interface AuthApi {
     @POST("api/auth/login")
     suspend fun login(@Body request: LoginRequest): ApiResponse<LoginResponse>
 
+    @POST("api/auth/refresh")
+    suspend fun refreshToken(@Body request: RefreshTokenRequest): ApiResponse<TokenRefreshResponse>
+
+    @POST("api/auth/logout")
+    suspend fun logout(
+        @Header("Authorization") authorization: String?,
+        @Body request: LogoutRequest?
+    ): ApiResponse<Void>
+
     @POST("api/questions")
     suspend fun createQuestion(
         @Header("Authorization") authorization: String,

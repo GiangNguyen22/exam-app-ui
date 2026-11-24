@@ -7,12 +7,16 @@ import com.internalexam.model.mock.Role
 object SessionManager {
     private const val PREFS_NAME = "internal_exam_session"
     private const val KEY_ACCESS_TOKEN = "access_token"
+    private const val KEY_REFRESH_TOKEN = "refresh_token"
     private const val KEY_CURRENT_ROLE = "current_role"
 
     private var prefsInitialized = false
     private lateinit var prefs: android.content.SharedPreferences
 
     var accessToken: String? = null
+        private set
+
+    var refreshToken: String? = null
         private set
 
     var currentRole: Role? = null
@@ -23,18 +27,43 @@ object SessionManager {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val storedToken = prefs.getString(KEY_ACCESS_TOKEN, null)
         accessToken = KeystoreCryptoManager.decrypt(storedToken) ?: storedToken
+        val storedRefreshToken = prefs.getString(KEY_REFRESH_TOKEN, null)
+        refreshToken = KeystoreCryptoManager.decrypt(storedRefreshToken) ?: storedRefreshToken
         currentRole = prefs.getString(KEY_CURRENT_ROLE, null)?.toRole()
         prefsInitialized = true
     }
 
     fun saveSession(token: String, role: Role) {
+        saveSession(token, null, role)
+    }
+
+    fun saveSession(token: String, refresh: String?, role: Role) {
         accessToken = token
+        refreshToken = refresh
         currentRole = role
         ensureInitialized()
         val encryptedToken = KeystoreCryptoManager.encrypt(token)
-        prefs.edit()
+        val encryptedRefresh = refresh?.let { KeystoreCryptoManager.encrypt(it) }
+        val editor = prefs.edit()
             .putString(KEY_ACCESS_TOKEN, encryptedToken)
             .putString(KEY_CURRENT_ROLE, role.name)
+        if (encryptedRefresh != null) {
+            editor.putString(KEY_REFRESH_TOKEN, encryptedRefresh)
+        } else {
+            editor.remove(KEY_REFRESH_TOKEN)
+        }
+        editor.apply()
+    }
+
+    fun updateTokens(newAccessToken: String, newRefreshToken: String) {
+        accessToken = newAccessToken
+        refreshToken = newRefreshToken
+        ensureInitialized()
+        val encryptedToken = KeystoreCryptoManager.encrypt(newAccessToken)
+        val encryptedRefresh = KeystoreCryptoManager.encrypt(newRefreshToken)
+        prefs.edit()
+            .putString(KEY_ACCESS_TOKEN, encryptedToken)
+            .putString(KEY_REFRESH_TOKEN, encryptedRefresh)
             .apply()
     }
 
@@ -61,10 +90,24 @@ object SessionManager {
 
     fun clearSession() {
         accessToken = null
+        refreshToken = null
         currentRole = null
         if (prefsInitialized) {
             prefs.edit().clear().apply()
         }
+    }
+
+    @androidx.annotation.VisibleForTesting
+    fun resetForTesting(customPrefs: android.content.SharedPreferences? = null) {
+        if (customPrefs != null) {
+            prefs = customPrefs
+            prefsInitialized = true
+        } else {
+            prefsInitialized = false
+        }
+        accessToken = null
+        refreshToken = null
+        currentRole = null
     }
 
     private fun ensureInitialized() {
