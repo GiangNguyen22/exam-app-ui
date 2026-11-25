@@ -14,8 +14,23 @@ data class ApiResponse<T>(
 
 data class LoginResponse(
     val accessToken: String,
-    val tokenType: String,
-    val roles: List<String>?
+    val refreshToken: String? = null,
+    val tokenType: String = "Bearer",
+    val roles: List<String>? = null
+)
+
+data class RefreshTokenRequest(
+    val refreshToken: String
+)
+
+data class TokenRefreshResponse(
+    val accessToken: String,
+    val refreshToken: String,
+    val tokenType: String = "Bearer"
+)
+
+data class LogoutRequest(
+    val refreshToken: String? = null
 )
 
 data class QuestionCreateRequest(
