@@ -1,6 +1,7 @@
 package com.internalexam.data
 
 import android.content.Context
+import com.internalexam.data.security.KeystoreCryptoManager
 import com.internalexam.model.mock.Role
 
 object SessionManager {
@@ -20,7 +21,8 @@ object SessionManager {
     fun initialize(context: Context) {
         if (prefsInitialized) return
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        accessToken = prefs.getString(KEY_ACCESS_TOKEN, null)
+        val storedToken = prefs.getString(KEY_ACCESS_TOKEN, null)
+        accessToken = KeystoreCryptoManager.decrypt(storedToken) ?: storedToken
         currentRole = prefs.getString(KEY_CURRENT_ROLE, null)?.toRole()
         prefsInitialized = true
     }
@@ -29,8 +31,9 @@ object SessionManager {
         accessToken = token
         currentRole = role
         ensureInitialized()
+        val encryptedToken = KeystoreCryptoManager.encrypt(token)
         prefs.edit()
-            .putString(KEY_ACCESS_TOKEN, token)
+            .putString(KEY_ACCESS_TOKEN, encryptedToken)
             .putString(KEY_CURRENT_ROLE, role.name)
             .apply()
     }
@@ -38,8 +41,9 @@ object SessionManager {
     fun saveToken(token: String) {
         accessToken = token
         ensureInitialized()
+        val encryptedToken = KeystoreCryptoManager.encrypt(token)
         prefs.edit()
-            .putString(KEY_ACCESS_TOKEN, token)
+            .putString(KEY_ACCESS_TOKEN, encryptedToken)
             .apply()
     }
 
@@ -52,6 +56,10 @@ object SessionManager {
     }
 
     fun clear() {
+        clearSession()
+    }
+
+    fun clearSession() {
         accessToken = null
         currentRole = null
         if (prefsInitialized) {
