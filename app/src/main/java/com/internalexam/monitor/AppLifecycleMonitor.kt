@@ -26,12 +26,12 @@ object AppLifecycleMonitor : DefaultLifecycleObserver {
     override fun onStop(owner: LifecycleOwner) {
         super.onStop(owner)
         if (!isInExam) return
-        ProctoringEventBuffer.push("FOCUS_LOST", "Thí sinh rời khỏi ứng dụng")
+        ProctoringEventBuffer.push(SecurityEventType.APP_BACKGROUND)
     }
 
     override fun onStart(owner: LifecycleOwner) {
         super.onStart(owner)
         if (!isInExam) return
-        ProctoringEventBuffer.push("FOCUS_RESTORED", "Thí sinh quay lại ứng dụng")
+        ProctoringEventBuffer.push(SecurityEventType.APP_FOREGROUND)
     }
 }
