@@ -17,6 +17,8 @@
    - Không được tháo bỏ hoặc can thiệp làm vô hiệu hóa `FLAG_SECURE` (chặn chụp màn hình) hoặc các trình lắng nghe sự kiện thoát ứng dụng (`AppLifecycleMonitor`, `ProctoringEventBuffer`).
 5. **Không viết Code Blocking trên Main Thread**:
    - Tất cả thao tác gọi API, đọc/ghi file Excel/PDF, hoặc xử lý ảnh OCR phải được chạy trên Coroutine `Dispatchers.IO` hoặc `Dispatchers.Default`.
+6. **Khai báo Constants & Tránh Magic Strings**:
+   - Các chuỗi văn bản dùng lặp lại, action names, routes hoặc error messages thường dùng cần khai báo tập trung trong object hằng số (vd: `Routes.kt`, `Constants.kt`) thay vì hardcode trực tiếp rải rác.
 
 ---
 
